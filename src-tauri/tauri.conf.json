@@ -1,0 +1,45 @@
+{
+  "productName": "BeatPT",
+  "version": "0.1.0",
+  "identifier": "com.beatpt.app",
+  "build": {
+    "beforeDevCommand": "npm run vite:dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run vite:build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "title": "BeatPT",
+    "windows": [
+      {
+        "title": "BeatPT",
+        "width": 1400,
+        "height": 850,
+        "resizable": true,
+        "fullscreen": false,
+        "minWidth": 1100,
+        "minHeight": 700,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ]
+  },
+  "plugins": {
+    "dialog": {},
+    "fs": {
+      "scope": {
+        "allow": ["**"]
+      }
+    }
+  }
+}
