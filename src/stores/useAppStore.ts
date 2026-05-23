@@ -42,21 +42,15 @@ interface AppState {
   loadTrackToDeck: (deck: 'A' | 'B', track: Track) => void;
 
   // Crossfader
-  crossfaderPosition: number; // -1 to 1
+  crossfaderPosition: number;
   setCrossfaderPosition: (pos: number) => void;
 
-  // Keyboard Mash Mode
-  isMashMode: boolean;
-  toggleMashMode: () => void;
-
-  // Action log (recent DJ actions triggered)
+  // Action log
   actionLog: ActionLog[];
   addAction: (action: Omit<ActionLog, 'id' | 'timestamp'>) => void;
 
-  // Fun meters
-  hypeLevel: number; // 0-100
-  setHypeLevel: (level: number) => void;
-  transitionConfidence: number; // 0-100
+  // Transition confidence
+  transitionConfidence: number;
   setTransitionConfidence: (level: number) => void;
 
   // AI thinking overlay
@@ -64,14 +58,7 @@ interface AppState {
   aiThinkingMessage: string;
   showAIThinking: (message: string) => void;
   hideAIThinking: () => void;
-
-  // DJ Name
-  djName: string;
-  generateDJName: () => void;
 }
-
-const DJ_NAME_PREFIXES = ['DJ', 'MC', 'Lil', 'Big', 'The', 'Dr.', 'Professor', 'Captain', 'Ultra', 'Cyber'];
-const DJ_NAME_SUFFIXES = ['Beat', 'Drop', 'Bass', 'Sync', 'Loop', 'Wave', 'Pulse', 'Flux', 'Glitch', 'Byte', 'Bit', 'Flow'];
 
 const defaultDeckState: DeckState = {
   track: null,
@@ -113,10 +100,6 @@ export const useAppStore = create<AppState>((set) => ({
   setCrossfaderPosition: (pos) =>
     set({ crossfaderPosition: Math.max(-1, Math.min(1, pos)) }),
 
-  // Keyboard Mash Mode
-  isMashMode: false,
-  toggleMashMode: () => set((state) => ({ isMashMode: !state.isMashMode })),
-
   // Action log
   actionLog: [],
   addAction: (action) =>
@@ -130,9 +113,7 @@ export const useAppStore = create<AppState>((set) => ({
       return { actionLog: updated };
     }),
 
-  // Fun meters
-  hypeLevel: 0,
-  setHypeLevel: (level) => set({ hypeLevel: Math.max(0, Math.min(100, level)) }),
+  // Transition confidence
   transitionConfidence: 50,
   setTransitionConfidence: (level) =>
     set({ transitionConfidence: Math.max(0, Math.min(100, level)) }),
@@ -142,13 +123,4 @@ export const useAppStore = create<AppState>((set) => ({
   aiThinkingMessage: '',
   showAIThinking: (message) => set({ isAIThinking: true, aiThinkingMessage: message }),
   hideAIThinking: () => set({ isAIThinking: false, aiThinkingMessage: '' }),
-
-  // DJ Name
-  djName: 'DJ Beat',
-  generateDJName: () =>
-    set(() => {
-      const prefix = DJ_NAME_PREFIXES[Math.floor(Math.random() * DJ_NAME_PREFIXES.length)];
-      const suffix = DJ_NAME_SUFFIXES[Math.floor(Math.random() * DJ_NAME_SUFFIXES.length)];
-      return { djName: `${prefix} ${suffix}` };
-    }),
 }));

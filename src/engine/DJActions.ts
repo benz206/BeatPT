@@ -2,11 +2,17 @@ import { AudioEngine } from './AudioEngine';
 import { EchoOut, FilterSweep, getBassSwapSettings, StutterEffect, Reverb } from './Effects';
 import { useAppStore } from '../stores/useAppStore';
 
+export type MixPhase = 'groove' | 'buildup' | 'drop';
+export type ConflictGroup = 'gain' | 'filter' | 'spatial' | 'eq';
+
 export type DJAction = {
   name: string;
   description: string;
   icon: string;
   execute: () => void;
+  conflictGroup: ConflictGroup;
+  cooldown: number;
+  phases: MixPhase[];
 };
 
 function engine(): AudioEngine {
@@ -40,32 +46,12 @@ function bpmGuess(): number {
 
 const actions: DJAction[] = [
   {
-    name: 'Smooth Crossfade',
-    description: 'Animate crossfader to the opposite deck over 2 bars',
-    icon: '↔️',
-    execute() {
-      const e = engine();
-      const current = e.getCrossfaderValue();
-      const target = current <= 0 ? 1 : -1;
-      const bpm = bpmGuess();
-      const barDuration = (60 / bpm) * 4;
-      const steps = 40;
-      const stepTime = (barDuration * 2) / steps;
-      let i = 0;
-      const interval = setInterval(() => {
-        i++;
-        const t = i / steps;
-        const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-        e.setCrossfader(current + (target - current) * eased);
-        if (i >= steps) clearInterval(interval);
-      }, stepTime * 1000);
-    },
-  },
-
-  {
     name: 'Echo Out',
     description: 'Apply feedback echo to current deck',
     icon: '🔁',
+    conflictGroup: 'spatial',
+    cooldown: 5000,
+    phases: ['groove', 'buildup'],
     execute() {
       const e = engine();
       const deck = activeDeck();
@@ -78,6 +64,9 @@ const actions: DJAction[] = [
     name: 'Bass Swap',
     description: 'Kill bass on active deck, boost on the other',
     icon: '🔊',
+    conflictGroup: 'eq',
+    cooldown: 4000,
+    phases: ['groove'],
     execute() {
       const e = engine();
       const a = activeDeck();
@@ -98,6 +87,9 @@ const actions: DJAction[] = [
     name: 'Filter Sweep',
     description: 'Sweep a low-pass filter across the active deck',
     icon: '〰️',
+    conflictGroup: 'filter',
+    cooldown: 3000,
+    phases: ['buildup'],
     execute() {
       const e = engine();
       const deck = activeDeck();
@@ -110,6 +102,9 @@ const actions: DJAction[] = [
     name: 'Beat Drop',
     description: 'Kill volume briefly then slam it back',
     icon: '💥',
+    conflictGroup: 'gain',
+    cooldown: 3000,
+    phases: ['drop'],
     execute() {
       const e = engine();
       const deck = activeDeck();
@@ -130,6 +125,9 @@ const actions: DJAction[] = [
     name: 'Stutter',
     description: 'Beat-synced gating stutter on active deck',
     icon: '⚡',
+    conflictGroup: 'gain',
+    cooldown: 3000,
+    phases: ['drop'],
     execute() {
       const e = engine();
       const deck = activeDeck();
@@ -142,6 +140,9 @@ const actions: DJAction[] = [
     name: 'EQ Kill',
     description: 'Kill highs or mids temporarily on active deck',
     icon: '🎚️',
+    conflictGroup: 'eq',
+    cooldown: 3500,
+    phases: ['buildup', 'groove'],
     execute() {
       const e = engine();
       const deck = activeDeck();
@@ -156,6 +157,9 @@ const actions: DJAction[] = [
     name: 'Volume Pump',
     description: 'Rhythmic volume pumping on active deck',
     icon: '📳',
+    conflictGroup: 'gain',
+    cooldown: 5000,
+    phases: ['buildup'],
     execute() {
       const e = engine();
       const deck = activeDeck();
@@ -180,6 +184,9 @@ const actions: DJAction[] = [
     name: 'Reverb Wash',
     description: 'Add atmospheric reverb tail to active deck',
     icon: '🌊',
+    conflictGroup: 'spatial',
+    cooldown: 5000,
+    phases: ['groove'],
     execute() {
       const e = engine();
       const deck = activeDeck();
@@ -192,6 +199,9 @@ const actions: DJAction[] = [
     name: 'Spinback',
     description: 'Fake spinback via rapid gain ramp-down then restore',
     icon: '🎤',
+    conflictGroup: 'gain',
+    cooldown: 2500,
+    phases: ['drop'],
     execute() {
       const e = engine();
       const deck = activeDeck();
@@ -207,8 +217,7 @@ const actions: DJAction[] = [
   },
 ];
 
-// Smooth Crossfade is weighted lower to avoid too-frequent deck switching
-const weights = actions.map((a) => (a.name === 'Smooth Crossfade' ? 0.5 : 1));
+const weights = actions.map(() => 1);
 const totalWeight = weights.reduce((s, w) => s + w, 0);
 
 export function getRandomAction(): DJAction {

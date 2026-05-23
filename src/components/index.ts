@@ -4,7 +4,5 @@ export { Waveform } from './Waveform';
 export { Crossfader } from './Crossfader';
 export { TrackLibrary } from './TrackLibrary';
 export { ActionLog } from './ActionLog';
-export { HypeMeter } from './HypeMeter';
 export { TransitionMeter } from './TransitionMeter';
 export { AIThinkingOverlay } from './AIThinkingOverlay';
-export { KeyboardVisualizer } from './KeyboardVisualizer';

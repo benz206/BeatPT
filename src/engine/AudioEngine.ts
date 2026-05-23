@@ -22,6 +22,7 @@ export class AudioEngine {
   private crossfaderGainB: GainNode;
   private masterLimiter: DynamicsCompressorNode;
   private crossfaderValue = 0;
+  private playbackRates: Record<Deck, number> = { A: 1, B: 1 };
   private readonly RAMP_TIME = 0.01;
 
   private constructor() {
@@ -110,6 +111,7 @@ export class AudioEngine {
     }
     state.buffer = audioBuffer;
     state.pauseOffset = 0;
+    this.playbackRates[deck] = 1;
   }
 
   play(deck: Deck): void {
@@ -122,6 +124,7 @@ export class AudioEngine {
 
     const source = this.ctx.createBufferSource();
     source.buffer = state.buffer;
+    source.playbackRate.value = this.playbackRates[deck];
     source.connect(state.gainNode);
     source.start(0, state.pauseOffset);
     source.onended = () => {
@@ -132,7 +135,7 @@ export class AudioEngine {
     };
 
     state.source = source;
-    state.startTime = this.ctx.currentTime - state.pauseOffset;
+    state.startTime = this.ctx.currentTime;
     state.isPlaying = true;
   }
 
@@ -140,7 +143,8 @@ export class AudioEngine {
     const state = this.decks[deck];
     if (!state.isPlaying || !state.source) return;
 
-    state.pauseOffset = this.ctx.currentTime - state.startTime;
+    const elapsed = this.ctx.currentTime - state.startTime;
+    state.pauseOffset = state.pauseOffset + elapsed * this.playbackRates[deck];
     state.source.onended = null;
     state.source.stop();
     state.source = null;
@@ -189,9 +193,18 @@ export class AudioEngine {
   getPlaybackPosition(deck: Deck): number {
     const state = this.decks[deck];
     if (state.isPlaying) {
-      return this.ctx.currentTime - state.startTime;
+      const elapsed = this.ctx.currentTime - state.startTime;
+      return state.pauseOffset + elapsed * this.playbackRates[deck];
     }
     return state.pauseOffset;
+  }
+
+  setPlaybackRate(deck: Deck, rate: number): void {
+    this.playbackRates[deck] = rate;
+    const state = this.decks[deck];
+    if (state.source) {
+      state.source.playbackRate.value = rate;
+    }
   }
 
   setVolume(deck: Deck, value: number): void {
@@ -204,7 +217,6 @@ export class AudioEngine {
 
   setCrossfader(value: number): void {
     this.crossfaderValue = Math.max(-1, Math.min(1, value));
-    // Equal-power: map [-1,1] to [0,PI/2]
     const angle = ((this.crossfaderValue + 1) / 2) * (Math.PI / 2);
     const gainA = Math.cos(angle);
     const gainB = Math.sin(angle);

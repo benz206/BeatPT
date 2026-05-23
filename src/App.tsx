@@ -4,15 +4,15 @@ import {
   Crossfader,
   TrackLibrary,
   ActionLog,
-  HypeMeter,
   TransitionMeter,
   AIThinkingOverlay,
-  KeyboardVisualizer,
 } from './components';
 import { useKeyboardMash } from './hooks/useKeyboardMash';
+import { useAutoTransition } from './hooks/useAutoTransition';
 
 export default function App() {
   useKeyboardMash();
+  useAutoTransition();
 
   return (
     <div className="flex flex-col h-screen w-screen bg-bg-primary text-text-primary overflow-hidden">
@@ -38,12 +38,6 @@ export default function App() {
           <div className="flex gap-3 p-4 h-52 shrink-0">
             <div className="flex-1">
               <ActionLog />
-            </div>
-            <div className="flex-1">
-              <KeyboardVisualizer />
-            </div>
-            <div className="w-28">
-              <HypeMeter />
             </div>
             <div className="w-36">
               <TransitionMeter />
