@@ -51,13 +51,24 @@ export function Deck({ deckId }: DeckProps) {
 
         <Waveform deckId={deckId} />
 
-        <div className="min-h-[32px]">
+        <div className="min-h-[40px]">
           {track ? (
-            <div>
-              <p className="text-sm font-medium text-text-primary truncate">{track.name}</p>
-              <p className="text-xs text-text-secondary truncate">
-                {track.artist} · {formatDuration(track.duration)}
-              </p>
+            <div className="flex items-center gap-3">
+              {track.albumArt ? (
+                <img src={track.albumArt} className="w-10 h-10 rounded object-cover shrink-0" alt="" />
+              ) : (
+                <div className="w-10 h-10 rounded bg-bg-tertiary border border-border shrink-0 flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted">
+                    <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+                  </svg>
+                </div>
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-text-primary truncate">{track.name}</p>
+                <p className="text-xs text-text-secondary truncate">
+                  {track.artist} · {formatDuration(track.duration)}
+                </p>
+              </div>
             </div>
           ) : (
             <button

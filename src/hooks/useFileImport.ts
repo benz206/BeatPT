@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/useAppStore';
 import type { Track } from '../stores/useAppStore';
-import { detectBPM } from '../engine/BPMDetector';
+import { detectBPM, generateBeatPositions } from '../engine/BPMDetector';
 import { AudioEngine } from '../engine/AudioEngine';
+import { parseMetadata } from '../engine/MetadataParser';
 
 function generateWaveformData(audioBuffer: AudioBuffer, points = 200): number[] {
   const channelData = audioBuffer.getChannelData(0);
@@ -28,7 +29,6 @@ export function useFileImport() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const addTrack = useAppStore((state) => state.addTrack);
 
-  // Ensure the hidden file input exists in the DOM
   function getOrCreateInput(): HTMLInputElement {
     if (inputRef.current) return inputRef.current;
 
@@ -46,22 +46,26 @@ export function useFileImport() {
     const engine = AudioEngine.getInstance();
 
     const arrayBuffer = await file.arrayBuffer();
+    const metadata = parseMetadata(arrayBuffer);
     const audioBuffer = await engine.decodeAudioFile(arrayBuffer);
     const bpm = detectBPM(audioBuffer);
     const waveformData = generateWaveformData(audioBuffer);
+    const beatPositions = generateBeatPositions(bpm, audioBuffer.duration);
 
     const id = `${file.name}-${file.size}`;
-    const name = file.name.replace(/\.[^/.]+$/, '');
+    const name = metadata.title || file.name.replace(/\.[^/.]+$/, '');
 
     const track: Track = {
       id,
       name,
-      artist: 'Unknown Artist',
+      artist: metadata.artist || 'Unknown Artist',
       duration: audioBuffer.duration,
       bpm,
       filePath: file.name,
       audioBuffer,
       waveformData,
+      beatPositions,
+      albumArt: metadata.albumArt,
     };
 
     addTrack(track);
@@ -79,7 +83,6 @@ export function useFileImport() {
         await Promise.all(Array.from(files).map(processFile));
       } finally {
         setIsImporting(false);
-        // Reset so the same file can be selected again
         input.value = '';
       }
     };

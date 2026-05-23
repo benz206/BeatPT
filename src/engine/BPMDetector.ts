@@ -1,3 +1,12 @@
+export function generateBeatPositions(bpm: number, duration: number): number[] {
+  const interval = 60 / bpm;
+  const positions: number[] = [];
+  for (let t = 0; t < duration; t += interval) {
+    positions.push(t);
+  }
+  return positions;
+}
+
 export function detectBPM(audioBuffer: AudioBuffer): number {
   const sampleRate = audioBuffer.sampleRate;
   const channelData = audioBuffer.getChannelData(0);

@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { AudioEngine } from '../engine/AudioEngine';
-import { detectBPM } from '../engine/BPMDetector';
+import { detectBPM, generateBeatPositions } from '../engine/BPMDetector';
+import { parseMetadata } from '../engine/MetadataParser';
 import { useAppStore } from '../stores/useAppStore';
 import type { Track } from '../stores/useAppStore';
 
@@ -48,23 +49,26 @@ export function useAudioEngine() {
       const engine = engineRef.current;
 
       const arrayBuffer = await fileToArrayBuffer(file);
+      const metadata = parseMetadata(arrayBuffer);
       const audioBuffer = await engine.decodeAudioFile(arrayBuffer);
       const bpm = detectBPM(audioBuffer);
       const waveformData = generateWaveformData(audioBuffer);
+      const beatPositions = generateBeatPositions(bpm, audioBuffer.duration);
 
-      // Derive a simple track id from name + size to deduplicate
       const id = `${file.name}-${file.size}`;
-      const name = file.name.replace(/\.[^/.]+$/, '');
+      const name = metadata.title || file.name.replace(/\.[^/.]+$/, '');
 
       const track: Track = {
         id,
         name,
-        artist: 'Unknown Artist',
+        artist: metadata.artist || 'Unknown Artist',
         duration: audioBuffer.duration,
         bpm,
         filePath: file.name,
         audioBuffer,
         waveformData,
+        beatPositions,
+        albumArt: metadata.albumArt,
       };
 
       addTrack(track);
@@ -104,6 +108,10 @@ export function useAudioEngine() {
     [updateDeck]
   );
 
+  const seek = useCallback((deck: Deck, position: number) => {
+    engineRef.current.seek(deck, position);
+  }, []);
+
   const setCrossfader = useCallback(
     (value: number) => {
       engineRef.current.setCrossfader(value);
@@ -125,7 +133,6 @@ export function useAudioEngine() {
       engineRef.current.setEQ(deck, band, value);
       updateDeck(deck, {
         eq: {
-          // Read current store eq by re-selecting inline
           ...useAppStore.getState()[deck === 'A' ? 'deckA' : 'deckB'].eq,
           [band]: value,
         },
@@ -143,6 +150,7 @@ export function useAudioEngine() {
     play,
     pause,
     togglePlayback,
+    seek,
     setCrossfader,
     setVolume,
     setEQ,

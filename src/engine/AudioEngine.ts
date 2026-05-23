@@ -166,6 +166,26 @@ export class AudioEngine {
     return this.decks[deck].isPlaying;
   }
 
+  seek(deck: Deck, position: number): void {
+    const state = this.decks[deck];
+    if (!state.buffer) return;
+
+    const wasPlaying = state.isPlaying;
+
+    if (state.source) {
+      state.source.onended = null;
+      state.source.stop();
+      state.source = null;
+    }
+
+    state.pauseOffset = Math.max(0, Math.min(position, state.buffer.duration));
+    state.isPlaying = false;
+
+    if (wasPlaying) {
+      this.play(deck);
+    }
+  }
+
   getPlaybackPosition(deck: Deck): number {
     const state = this.decks[deck];
     if (state.isPlaying) {

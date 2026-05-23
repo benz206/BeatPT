@@ -9,6 +9,8 @@ export interface Track {
   filePath: string;
   audioBuffer: AudioBuffer | null;
   waveformData: number[];
+  beatPositions: number[];
+  albumArt?: string;
 }
 
 export interface DeckState {

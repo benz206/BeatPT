@@ -77,11 +77,20 @@ export function TrackLibrary() {
                       : 'border-transparent hover:bg-bg-tertiary/40'
                   }`}
                 >
-                  <p className="text-xs font-medium text-text-primary truncate">{track.name}</p>
-                  <p className="text-[11px] text-text-secondary truncate">{track.artist}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[11px] font-mono text-accent">{Math.round(track.bpm)} BPM</span>
-                    <span className="text-[11px] text-text-muted">{formatDuration(track.duration)}</span>
+                  <div className="flex items-center gap-2.5">
+                    {track.albumArt ? (
+                      <img src={track.albumArt} className="w-8 h-8 rounded object-cover shrink-0" alt="" />
+                    ) : (
+                      <div className="w-8 h-8 rounded bg-bg-tertiary shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-text-primary truncate">{track.name}</p>
+                      <p className="text-[11px] text-text-secondary truncate">{track.artist}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] font-mono text-accent">{Math.round(track.bpm)} BPM</span>
+                        <span className="text-[11px] text-text-muted">{formatDuration(track.duration)}</span>
+                      </div>
+                    </div>
                   </div>
                 </button>
 
