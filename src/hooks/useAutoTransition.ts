@@ -1,13 +1,24 @@
 import { useEffect, useRef } from 'react';
 import { AudioEngine } from '../engine/AudioEngine';
 import { useAppStore } from '../stores/useAppStore';
+import { selectTransition } from '../engine/TransitionStrategy';
+import { findBestMixPoint, MixPoint } from '../engine/MixPointFinder';
+import { executeTransition } from '../engine/TransitionExecutor';
 
-const TRANSITION_LEAD_SECS = 30;
-const CROSSFADE_SECS = 16;
+const TRANSITION_ICONS: Record<string, string> = {
+  'long-blend': '🎶',
+  'tempo-ramp': '⏫',
+  'filter-sweep': '〰️',
+  'echo-drop': '💥',
+  'breakdown-bridge': '🌉',
+};
 
 export function useAutoTransition() {
   const transitioningRef = useRef(false);
   const lastConfidenceRef = useRef(0);
+  const mixPointRef = useRef<MixPoint | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const planCacheRef = useRef<{ deckId: string; plan: ReturnType<typeof selectTransition> } | null>(null);
 
   useEffect(() => {
     let rafId: number;
@@ -30,20 +41,80 @@ export function useAutoTransition() {
           const position = engine.getPlaybackPosition(deckId);
           const remaining = deckState.track.duration - position;
 
-          if (now - lastConfidenceRef.current > 500) {
-            lastConfidenceRef.current = now;
-            if (remaining > TRANSITION_LEAD_SECS * 2) {
-              state.setTransitionConfidence(30);
-            } else if (remaining > TRANSITION_LEAD_SECS) {
-              const progress = 1 - (remaining - TRANSITION_LEAD_SECS) / TRANSITION_LEAD_SECS;
-              state.setTransitionConfidence(Math.round(30 + progress * 55));
+          if (!planCacheRef.current || planCacheRef.current.deckId !== deckId) {
+            planCacheRef.current = {
+              deckId,
+              plan: selectTransition(deckState.track, otherState.track),
+            };
+            mixPointRef.current = null;
+          }
+
+          const plan = planCacheRef.current.plan;
+
+          if (!mixPointRef.current) {
+            const point = findBestMixPoint(
+              deckState.track.energySegments,
+              deckState.track.duration,
+              plan.estimatedDuration,
+              plan.type === 'echo-drop',
+            );
+            if (point && position >= point.triggerTime - 60) {
+              mixPointRef.current = point;
             }
           }
 
-          if (remaining <= TRANSITION_LEAD_SECS && remaining > 2) {
+          if (now - lastConfidenceRef.current > 500) {
+            lastConfidenceRef.current = now;
+            if (mixPointRef.current) {
+              const timeUntilTrigger = mixPointRef.current.triggerTime - position;
+              if (timeUntilTrigger <= 60 && timeUntilTrigger > 0) {
+                const progress = 1 - timeUntilTrigger / 60;
+                state.setTransitionConfidence(Math.round(30 + progress * 55));
+              }
+            } else if (remaining > 60) {
+              state.setTransitionConfidence(30);
+            }
+          }
+
+          const triggerTime = mixPointRef.current?.triggerTime ?? (deckState.track.duration - plan.estimatedDuration - 2);
+          if (position >= triggerTime && remaining > 2) {
             transitioningRef.current = true;
-            state.setTransitionConfidence(95);
-            performTransition(deckId, otherDeck, transitioningRef);
+            mixPointRef.current = null;
+            planCacheRef.current = null;
+
+            state.setTransitionConfidence(85);
+            state.setActiveTransitionType(plan.type);
+            state.addAction({
+              name: plan.description.split(' — ')[0],
+              icon: TRANSITION_ICONS[plan.type] ?? '↔️',
+              description: plan.description,
+            });
+
+            abortRef.current = executeTransition({
+              engine,
+              fromDeck: deckId,
+              toDeck: otherDeck,
+              fromTrack: deckState.track,
+              toTrack: otherState.track,
+              fromSpeed: deckState.speed,
+              toSpeed: otherState.speed,
+              plan,
+              onComplete: () => {
+                transitioningRef.current = false;
+                abortRef.current = null;
+                state.setTransitionConfidence(50);
+                state.setActiveTransitionType(null);
+              },
+              onProgress: (confidence, _message) => {
+                state.setTransitionConfidence(confidence);
+              },
+              setCrossfaderPosition: (pos) => {
+                useAppStore.getState().setCrossfaderPosition(pos);
+              },
+              updateDeck: (deck, updates) => {
+                useAppStore.getState().updateDeck(deck, updates);
+              },
+            });
             break;
           }
         }
@@ -53,58 +124,9 @@ export function useAutoTransition() {
     }
 
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      cancelAnimationFrame(rafId);
+      abortRef.current?.abort();
+    };
   }, []);
-}
-
-function performTransition(
-  fromDeck: 'A' | 'B',
-  toDeck: 'A' | 'B',
-  transitioningRef: { current: boolean }
-) {
-  const engine = AudioEngine.getInstance();
-  const fromTrack = (fromDeck === 'A' ? useAppStore.getState().deckA : useAppStore.getState().deckB).track;
-  const toTrack = (toDeck === 'A' ? useAppStore.getState().deckA : useAppStore.getState().deckB).track;
-
-  if (!fromTrack || !toTrack) {
-    transitioningRef.current = false;
-    return;
-  }
-
-  const rate = fromTrack.bpm / toTrack.bpm;
-  engine.setPlaybackRate(toDeck, Math.max(0.5, Math.min(2, rate)));
-
-  engine.play(toDeck);
-  useAppStore.getState().updateDeck(toDeck, { isPlaying: true });
-
-  useAppStore.getState().addAction({
-    name: 'Auto Transition',
-    icon: '↔️',
-    description: `Beat-synced crossfade to Deck ${toDeck} (${Math.round(rate * 100)}% speed)`,
-  });
-
-  const startValue = engine.getCrossfaderValue();
-  const targetValue = toDeck === 'B' ? 1 : -1;
-  const steps = 80;
-  const stepTime = (CROSSFADE_SECS * 1000) / steps;
-  let i = 0;
-
-  const interval = setInterval(() => {
-    i++;
-    const t = i / steps;
-    const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-    const pos = startValue + (targetValue - startValue) * eased;
-    engine.setCrossfader(pos);
-    useAppStore.getState().setCrossfaderPosition(pos);
-
-    if (i >= steps) {
-      clearInterval(interval);
-      engine.stop(fromDeck);
-      useAppStore.getState().updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
-      useAppStore.getState().setTransitionConfidence(50);
-      setTimeout(() => {
-        transitioningRef.current = false;
-      }, 5000);
-    }
-  }, stepTime);
 }

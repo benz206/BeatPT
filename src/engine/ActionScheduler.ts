@@ -1,34 +1,26 @@
 import { AudioEngine } from './AudioEngine';
+import { useAppStore } from '../stores/useAppStore';
 import { djActions, type DJAction, type MixPhase } from './DJActions';
+import { getCurrentSegment, type EnergySegmentType } from './EnergyAnalyzer';
 
 interface CooldownEntry {
   conflictGroup: string;
   expiresAt: number;
 }
 
-const PHASE_THRESHOLDS: Record<MixPhase, [number, number]> = {
-  groove: [5, 8],
-  buildup: [4, 7],
-  drop: [1, 2],
-};
-
-const NEXT_PHASE: Record<MixPhase, MixPhase> = {
-  groove: 'buildup',
-  buildup: 'drop',
-  drop: 'groove',
-};
+function segmentToPhase(type: EnergySegmentType): MixPhase {
+  switch (type) {
+    case 'peak': return 'drop';
+    case 'rising': return 'buildup';
+    case 'falling': return 'groove';
+    case 'low': return 'groove';
+  }
+}
 
 export class ActionScheduler {
   private static instance: ActionScheduler | null = null;
-  private phase: MixPhase = 'groove';
-  private pressesInPhase = 0;
   private cooldowns: CooldownEntry[] = [];
   private lastActionName = '';
-  private phaseTarget: number;
-
-  private constructor() {
-    this.phaseTarget = this.computeThreshold();
-  }
 
   static getInstance(): ActionScheduler {
     if (!ActionScheduler.instance) {
@@ -41,12 +33,11 @@ export class ActionScheduler {
     const engine = AudioEngine.getInstance();
     if (!engine.isPlaying('A') && !engine.isPlaying('B')) return null;
 
-    this.pressesInPhase++;
     this.cleanExpired();
-    this.maybeAdvancePhase();
 
+    const phase = this.getPhase();
     const candidates = djActions
-      .filter(a => a.phases.includes(this.phase))
+      .filter(a => a.phases.includes(phase))
       .filter(a => !this.isBlocked(a))
       .filter(a => a.name !== this.lastActionName);
 
@@ -70,20 +61,28 @@ export class ActionScheduler {
   }
 
   getPhase(): MixPhase {
-    return this.phase;
+    const engine = AudioEngine.getInstance();
+    if (!engine.isPlaying('A') && !engine.isPlaying('B')) return 'groove';
+
+    const deckId = this.getActiveDeckId();
+    const state = useAppStore.getState();
+    const deckState = deckId === 'A' ? state.deckA : state.deckB;
+    const track = deckState.track;
+
+    if (!track || !track.energySegments.length) return 'groove';
+
+    const currentTime = engine.getPlaybackPosition(deckId);
+    const segment = getCurrentSegment(track.energySegments, currentTime);
+    if (!segment) return 'groove';
+
+    return segmentToPhase(segment.type);
   }
 
-  private computeThreshold(): number {
-    const [min, max] = PHASE_THRESHOLDS[this.phase];
-    return min + Math.floor(Math.random() * (max - min + 1));
-  }
-
-  private maybeAdvancePhase() {
-    if (this.pressesInPhase < this.phaseTarget) return;
-
-    this.phase = NEXT_PHASE[this.phase];
-    this.pressesInPhase = 0;
-    this.phaseTarget = this.computeThreshold();
+  private getActiveDeckId(): 'A' | 'B' {
+    const engine = AudioEngine.getInstance();
+    if (engine.isPlaying('A') && !engine.isPlaying('B')) return 'A';
+    if (engine.isPlaying('B') && !engine.isPlaying('A')) return 'B';
+    return engine.getCrossfaderValue() <= 0 ? 'A' : 'B';
   }
 
   private isBlocked(action: DJAction): boolean {

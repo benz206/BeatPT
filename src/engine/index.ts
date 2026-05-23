@@ -5,3 +5,11 @@ export { EchoOut, FilterSweep, getBassSwapSettings, StutterEffect, Reverb } from
 export type { DJAction, MixPhase, ConflictGroup } from './DJActions';
 export { djActions, getRandomAction, triggerRandomAction } from './DJActions';
 export { ActionScheduler } from './ActionScheduler';
+export type { EnergySegment, EnergySegmentType } from './EnergyAnalyzer';
+export { analyzeEnergy, getCurrentSegment } from './EnergyAnalyzer';
+export type { BPMRelationship, TransitionType, TransitionPlan } from './TransitionStrategy';
+export { classifyBPMRelationship, selectTransition } from './TransitionStrategy';
+export type { MixPoint } from './MixPointFinder';
+export { findBestMixPoint } from './MixPointFinder';
+export type { TransitionContext } from './TransitionExecutor';
+export { executeTransition } from './TransitionExecutor';

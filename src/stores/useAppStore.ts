@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { EnergySegment } from '../engine/EnergyAnalyzer';
 
 export interface Track {
   id: string;
@@ -10,6 +11,7 @@ export interface Track {
   audioBuffer: AudioBuffer | null;
   waveformData: number[];
   beatPositions: number[];
+  energySegments: EnergySegment[];
   albumArt?: string;
 }
 
@@ -18,6 +20,7 @@ export interface DeckState {
   isPlaying: boolean;
   currentTime: number;
   volume: number;
+  speed: number;
   eq: { low: number; mid: number; high: number };
 }
 
@@ -49,9 +52,11 @@ interface AppState {
   actionLog: ActionLog[];
   addAction: (action: Omit<ActionLog, 'id' | 'timestamp'>) => void;
 
-  // Transition confidence
+  // Transition
   transitionConfidence: number;
   setTransitionConfidence: (level: number) => void;
+  activeTransitionType: string | null;
+  setActiveTransitionType: (type: string | null) => void;
 
   // AI thinking overlay
   isAIThinking: boolean;
@@ -65,6 +70,7 @@ const defaultDeckState: DeckState = {
   isPlaying: false,
   currentTime: 0,
   volume: 1,
+  speed: 1,
   eq: { low: 0, mid: 0, high: 0 },
 };
 
@@ -91,8 +97,8 @@ export const useAppStore = create<AppState>((set) => ({
   loadTrackToDeck: (deck, track) =>
     set((state) =>
       deck === 'A'
-        ? { deckA: { ...state.deckA, track, isPlaying: false, currentTime: 0 } }
-        : { deckB: { ...state.deckB, track, isPlaying: false, currentTime: 0 } }
+        ? { deckA: { ...state.deckA, track, isPlaying: false, currentTime: 0, speed: 1 } }
+        : { deckB: { ...state.deckB, track, isPlaying: false, currentTime: 0, speed: 1 } }
     ),
 
   // Crossfader
@@ -113,10 +119,12 @@ export const useAppStore = create<AppState>((set) => ({
       return { actionLog: updated };
     }),
 
-  // Transition confidence
+  // Transition
   transitionConfidence: 50,
   setTransitionConfidence: (level) =>
     set({ transitionConfidence: Math.max(0, Math.min(100, level)) }),
+  activeTransitionType: null,
+  setActiveTransitionType: (type) => set({ activeTransitionType: type }),
 
   // AI thinking overlay
   isAIThinking: false,

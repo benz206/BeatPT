@@ -1,8 +1,17 @@
 import { useAppStore } from '../stores/useAppStore';
 import { Card, Label } from './ui';
 
+const TYPE_LABELS: Record<string, string> = {
+  'long-blend': 'Long Blend',
+  'tempo-ramp': 'Tempo Ramp',
+  'filter-sweep': 'Filter Sweep',
+  'echo-drop': 'Echo Drop',
+  'breakdown-bridge': 'Breakdown',
+};
+
 export function TransitionMeter() {
   const confidence = useAppStore((s) => s.transitionConfidence);
+  const activeType = useAppStore((s) => s.activeTransitionType);
 
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
@@ -42,6 +51,12 @@ export function TransitionMeter() {
           </div>
         </div>
       </div>
+
+      {activeType && (
+        <span className="text-[10px] font-medium text-accent animate-pulse">
+          {TYPE_LABELS[activeType] ?? activeType}
+        </span>
+      )}
     </Card>
   );
 }

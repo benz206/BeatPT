@@ -10,10 +10,10 @@ interface DeckProps {
 
 export function Deck({ deckId }: DeckProps) {
   const deckState = useAppStore((s) => (deckId === 'A' ? s.deckA : s.deckB));
-  const { togglePlayback, setVolume, setEQ, loadTrack } = useAudioEngine();
+  const { togglePlayback, setVolume, setSpeed, setEQ, loadTrack } = useAudioEngine();
 
   const isA = deckId === 'A';
-  const { track, isPlaying, volume, eq } = deckState;
+  const { track, isPlaying, volume, speed, eq } = deckState;
   const sliderClass = isA ? '' : 'accent-blue';
 
   const handleFileImport = useCallback(async () => {
@@ -34,6 +34,7 @@ export function Deck({ deckId }: DeckProps) {
   };
 
   const activeBorder = isA ? 'border-accent/25' : 'border-accent-2/25';
+  const effectiveBpm = track ? Math.round(track.bpm * speed) : 0;
 
   return (
     <Card accent={isA ? 'default' : 'blue'} className={`flex flex-col flex-1 min-h-0 overflow-y-auto p-4 transition-all duration-300 ${isPlaying ? activeBorder : ''}`}>
@@ -44,7 +45,7 @@ export function Deck({ deckId }: DeckProps) {
           </Label>
           {track && (
             <Badge accent={isA ? 'default' : 'blue'}>
-              {Math.round(track.bpm)} BPM
+              {effectiveBpm} BPM
             </Badge>
           )}
         </div>
@@ -118,6 +119,21 @@ export function Deck({ deckId }: DeckProps) {
           </svg>
         </button>
       </div>
+
+      {track && (
+        <div className="flex items-center gap-2 px-2">
+          <Label className="text-[10px] shrink-0">BPM</Label>
+          <input
+            type="range"
+            min={Math.round(track.bpm * 0.75)}
+            max={Math.round(track.bpm * 1.25)}
+            step={1}
+            value={effectiveBpm}
+            onChange={(e) => setSpeed(deckId, parseFloat(e.target.value) / track.bpm)}
+            className={`flex-1 ${sliderClass}`}
+          />
+        </div>
+      )}
 
       <div className="flex items-end justify-center gap-4">
         <div className="flex flex-col items-center gap-1">

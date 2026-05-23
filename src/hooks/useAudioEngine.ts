@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { AudioEngine } from '../engine/AudioEngine';
 import { detectBPM, generateBeatPositions } from '../engine/BPMDetector';
+import { analyzeEnergy } from '../engine/EnergyAnalyzer';
 import { parseMetadata } from '../engine/MetadataParser';
 import { useAppStore } from '../stores/useAppStore';
 import type { Track } from '../stores/useAppStore';
@@ -54,6 +55,7 @@ export function useAudioEngine() {
       const bpm = detectBPM(audioBuffer);
       const waveformData = generateWaveformData(audioBuffer);
       const beatPositions = generateBeatPositions(bpm, audioBuffer.duration);
+      const energySegments = analyzeEnergy(audioBuffer, beatPositions);
 
       const id = `${file.name}-${file.size}`;
       const name = metadata.title || file.name.replace(/\.[^/.]+$/, '');
@@ -68,6 +70,7 @@ export function useAudioEngine() {
         audioBuffer,
         waveformData,
         beatPositions,
+        energySegments,
         albumArt: metadata.albumArt,
       };
 
@@ -128,6 +131,15 @@ export function useAudioEngine() {
     [updateDeck]
   );
 
+  const setSpeed = useCallback(
+    (deck: Deck, value: number) => {
+      const clamped = Math.max(0.5, Math.min(2, value));
+      engineRef.current.setPlaybackRate(deck, clamped);
+      updateDeck(deck, { speed: clamped });
+    },
+    [updateDeck]
+  );
+
   const setEQ = useCallback(
     (deck: Deck, band: EQBand, value: number) => {
       engineRef.current.setEQ(deck, band, value);
@@ -153,6 +165,7 @@ export function useAudioEngine() {
     seek,
     setCrossfader,
     setVolume,
+    setSpeed,
     setEQ,
     getAnalyserNode,
   };

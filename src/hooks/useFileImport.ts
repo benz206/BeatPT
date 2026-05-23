@@ -4,6 +4,7 @@ import type { Track } from '../stores/useAppStore';
 import { detectBPM, generateBeatPositions } from '../engine/BPMDetector';
 import { AudioEngine } from '../engine/AudioEngine';
 import { parseMetadata } from '../engine/MetadataParser';
+import { analyzeEnergy } from '../engine/EnergyAnalyzer';
 
 function generateWaveformData(audioBuffer: AudioBuffer, points = 200): number[] {
   const channelData = audioBuffer.getChannelData(0);
@@ -51,6 +52,7 @@ export function useFileImport() {
     const bpm = detectBPM(audioBuffer);
     const waveformData = generateWaveformData(audioBuffer);
     const beatPositions = generateBeatPositions(bpm, audioBuffer.duration);
+    const energySegments = analyzeEnergy(audioBuffer, beatPositions);
 
     const id = `${file.name}-${file.size}`;
     const name = metadata.title || file.name.replace(/\.[^/.]+$/, '');
@@ -65,6 +67,7 @@ export function useFileImport() {
       audioBuffer,
       waveformData,
       beatPositions,
+      energySegments,
       albumArt: metadata.albumArt,
     };
 
