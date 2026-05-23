@@ -7,35 +7,34 @@ export function Header() {
   const toggleMashMode = useAppStore((s) => s.toggleMashMode);
 
   return (
-    <header className="flex items-center justify-between px-6 py-3 bg-bg-secondary border-b border-white/5">
+    <header className="flex items-center justify-between px-6 py-3 bg-bg-secondary border-b border-border border-b-amber-500/15">
       <div className="flex items-center gap-3">
-        <h1
-          className="text-2xl font-black tracking-tight"
-          style={{ background: 'linear-gradient(90deg, #e040fb, #00e5ff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
-        >
-          BeatPT
+        <h1 className="text-xl font-bold tracking-tight text-text-primary">
+          Beat<span className="text-accent">PT</span>
         </h1>
-        <span className="text-xs text-text-secondary uppercase tracking-wider">AI-Powered DJ</span>
+        <span className="text-[11px] text-text-muted font-medium">AI-Powered DJ</span>
       </div>
 
-      <button
-        onClick={generateDJName}
-        className="text-sm text-text-primary font-semibold px-3 py-1 rounded-lg bg-bg-tertiary border border-white/10 hover:border-accent/40 transition-all duration-200"
-        title="Click to regenerate"
-      >
-        {djName}
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={generateDJName}
+          className="text-xs text-text-secondary font-medium px-3 py-1.5 rounded hover:text-text-primary hover:bg-bg-tertiary/50 transition-all duration-200 cursor-pointer"
+          title="Click to regenerate"
+        >
+          {djName}
+        </button>
 
-      <button
-        onClick={toggleMashMode}
-        className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-200 border ${
-          isMashMode
-            ? 'bg-accent/20 border-accent text-accent shadow-[0_0_16px_#e040fb66]'
-            : 'bg-bg-tertiary border-white/10 text-text-secondary hover:border-accent/40 hover:text-accent'
-        }`}
-      >
-        MASH MODE
-      </button>
+        <button
+          onClick={toggleMashMode}
+          className={`text-xs font-medium px-3 py-1.5 rounded border transition-all duration-200 cursor-pointer ${
+            isMashMode
+              ? 'bg-accent/12 border-accent/30 text-accent'
+              : 'bg-bg-tertiary border-border text-text-secondary hover:border-border-hover hover:text-text-primary'
+          }`}
+        >
+          Mash Mode
+        </button>
+      </div>
     </header>
   );
 }

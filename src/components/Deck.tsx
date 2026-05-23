@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useAppStore } from '../stores/useAppStore';
 import { useAudioEngine } from '../hooks/useAudioEngine';
 import { Waveform } from './Waveform';
+import { Card, Label, Badge } from './ui';
 
 interface DeckProps {
   deckId: 'A' | 'B';
@@ -11,10 +12,9 @@ export function Deck({ deckId }: DeckProps) {
   const deckState = useAppStore((s) => (deckId === 'A' ? s.deckA : s.deckB));
   const { togglePlayback, setVolume, setEQ, loadTrack } = useAudioEngine();
 
-  const accentColor = deckId === 'A' ? 'accent' : 'accent-2';
-  const accentHex = deckId === 'A' ? '#e040fb' : '#00e5ff';
-
+  const isA = deckId === 'A';
   const { track, isPlaying, volume, eq } = deckState;
+  const sliderClass = isA ? '' : 'accent-blue';
 
   const handleFileImport = useCallback(async () => {
     const input = document.createElement('input');
@@ -27,89 +27,90 @@ export function Deck({ deckId }: DeckProps) {
     input.click();
   }, [deckId, loadTrack]);
 
-  const borderClass = isPlaying
-    ? `border-${accentColor}/60 shadow-[0_0_20px_${accentHex}33]`
-    : 'border-white/5';
-
   const formatDuration = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  const activeBorder = isA ? 'border-accent/25' : 'border-accent-2/25';
+
   return (
-    <div
-      className={`flex flex-col gap-3 p-4 rounded-xl bg-bg-secondary border transition-all duration-300 ${isPlaying ? 'shadow-lg' : 'opacity-90'}`}
-      style={{
-        borderColor: isPlaying ? `${accentHex}55` : 'rgba(255,255,255,0.05)',
-        boxShadow: isPlaying ? `0 0 24px ${accentHex}22` : undefined,
-      }}
-    >
-      <div className="flex items-center justify-between">
-        <span
-          className="text-xs font-black uppercase tracking-widest"
-          style={{ color: accentHex }}
-        >
-          DECK {deckId}
-        </span>
-        {track && (
-          <span
-            className="text-xs font-bold px-2 py-0.5 rounded-md"
-            style={{ background: `${accentHex}22`, color: accentHex }}
-          >
-            {Math.round(track.bpm)} BPM
-          </span>
-        )}
-      </div>
-
-      <Waveform deckId={deckId} />
-
-      <div className="min-h-[36px]">
-        {track ? (
-          <div>
-            <p className="text-sm font-semibold text-text-primary truncate">{track.name}</p>
-            <p className="text-xs text-text-secondary truncate">
-              {track.artist} · {formatDuration(track.duration)}
-            </p>
-          </div>
-        ) : (
-          <button
-            onClick={handleFileImport}
-            className="w-full py-2 text-xs font-semibold text-text-secondary rounded-lg bg-bg-tertiary border border-white/10 hover:border-white/20 hover:text-text-primary transition-all duration-200"
-          >
-            Load Track
-          </button>
-        )}
-      </div>
-
-      <div className="flex items-center gap-3">
-        <div className="flex-1 flex items-center justify-center gap-3">
-          <button
-            onClick={() => togglePlayback(deckId)}
-            disabled={!track}
-            className="w-12 h-12 rounded-full font-bold text-lg flex items-center justify-center transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{
-              background: isPlaying ? `${accentHex}33` : `${accentHex}22`,
-              border: `2px solid ${accentHex}`,
-              color: accentHex,
-              boxShadow: isPlaying ? `0 0 16px ${accentHex}66` : undefined,
-            }}
-          >
-            {isPlaying ? '⏸' : '▶'}
-          </button>
-          <button
-            onClick={() => {
-              if (isPlaying) togglePlayback(deckId);
-            }}
-            disabled={!track}
-            className="w-8 h-8 rounded-full text-sm flex items-center justify-center transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed bg-bg-tertiary border border-white/10 hover:border-white/30 text-text-secondary"
-          >
-            ⏹
-          </button>
+    <Card accent={isA ? 'default' : 'blue'} className={`flex flex-col flex-1 min-h-0 overflow-y-auto p-4 transition-all duration-300 ${isPlaying ? activeBorder : ''}`}>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <Label className={isA ? 'text-accent' : 'text-accent-2'}>
+            Deck {deckId}
+          </Label>
+          {track && (
+            <Badge accent={isA ? 'default' : 'blue'}>
+              {Math.round(track.bpm)} BPM
+            </Badge>
+          )}
         </div>
 
+        <Waveform deckId={deckId} />
+
+        <div className="min-h-[32px]">
+          {track ? (
+            <div>
+              <p className="text-sm font-medium text-text-primary truncate">{track.name}</p>
+              <p className="text-xs text-text-secondary truncate">
+                {track.artist} · {formatDuration(track.duration)}
+              </p>
+            </div>
+          ) : (
+            <button
+              onClick={handleFileImport}
+              className="w-full py-1.5 text-xs font-medium text-text-secondary rounded bg-bg-tertiary border border-border hover:border-border-hover hover:text-text-primary transition-all duration-200 cursor-pointer"
+            >
+              Load Track
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-4" />
+
+      <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-center gap-2">
+
+        <button
+          onClick={() => togglePlayback(deckId)}
+          disabled={!track}
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 border-2 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+            isPlaying
+              ? isA
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-accent-2 bg-accent-2/10 text-accent-2'
+              : 'border-border-strong text-text-secondary hover:border-border-hover hover:text-text-primary'
+          }`}
+        >
+          {isPlaying ? (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+              <rect x="2" y="1" width="3.5" height="12" rx="0.5" />
+              <rect x="8.5" y="1" width="3.5" height="12" rx="0.5" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+              <path d="M3 1.5v11l9-5.5z" />
+            </svg>
+          )}
+        </button>
+        <button
+          onClick={() => { if (isPlaying) togglePlayback(deckId); }}
+          disabled={!track}
+          className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 border border-border text-text-muted hover:border-border-hover hover:text-text-secondary cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+            <rect x="1" y="1" width="8" height="8" rx="1" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="flex items-end justify-center gap-4">
         <div className="flex flex-col items-center gap-1">
-          <span className="text-[10px] text-text-secondary uppercase tracking-wider">VOL</span>
+          <Label>Vol</Label>
           <input
             type="range"
             min={0}
@@ -117,21 +118,16 @@ export function Deck({ deckId }: DeckProps) {
             step={0.01}
             value={volume}
             onChange={(e) => setVolume(deckId, parseFloat(e.target.value))}
-            className="h-20 cursor-pointer"
-            style={{
-              writingMode: 'vertical-lr' as const,
-              direction: 'rtl' as const,
-              accentColor: accentHex,
-              width: '20px',
-            }}
+            className={`h-16 ${sliderClass}`}
+            style={{ writingMode: 'vertical-lr' as const, direction: 'rtl' as const, width: '18px' }}
           />
         </div>
-      </div>
 
-      <div className="flex gap-2">
+        <div className="w-px h-12 bg-border" />
+
         {(['low', 'mid', 'high'] as const).map((band) => (
-          <div key={band} className="flex-1 flex flex-col items-center gap-1">
-            <span className="text-[10px] text-text-secondary uppercase tracking-wider">{band}</span>
+          <div key={band} className="flex flex-col items-center gap-1 w-10">
+            <Label>{band}</Label>
             <input
               type="range"
               min={-12}
@@ -139,20 +135,16 @@ export function Deck({ deckId }: DeckProps) {
               step={0.5}
               value={eq[band]}
               onChange={(e) => setEQ(deckId, band, parseFloat(e.target.value))}
-              className="h-16 cursor-pointer"
-              style={{
-                writingMode: 'vertical-lr' as const,
-                direction: 'rtl' as const,
-                accentColor: accentHex,
-                width: '20px',
-              }}
+              className={`h-14 ${sliderClass}`}
+              style={{ writingMode: 'vertical-lr' as const, direction: 'rtl' as const, width: '18px' }}
             />
-            <span className="text-[10px] font-mono text-text-secondary">
+            <span className="text-[10px] font-mono text-text-muted">
               {eq[band] > 0 ? '+' : ''}{Math.round(eq[band])}
             </span>
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </Card>
   );
 }

@@ -6,10 +6,10 @@ interface WaveformProps {
   deckId: 'A' | 'B';
 }
 
-const ACCENT_A = '#e040fb';
-const ACCENT_B = '#00e5ff';
-const DIM_A = '#e040fb33';
-const DIM_B = '#00e5ff33';
+const ACCENT_A = '#d4872c';
+const ACCENT_B = '#6b9fff';
+const DIM_A = '#d4872c33';
+const DIM_B = '#6b9fff33';
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -50,7 +50,7 @@ export function Waveform({ deckId }: WaveformProps) {
       displayTimeRef.current = { current: position, duration };
 
       if (waveformData.length === 0) {
-        ctx.fillStyle = '#ffffff11';
+        ctx.fillStyle = '#ffffff08';
         ctx.fillRect(0, height / 2 - 1, width, 2);
         rafRef.current = requestAnimationFrame(draw);
         return;
@@ -83,17 +83,17 @@ export function Waveform({ deckId }: WaveformProps) {
   const duration = track?.duration ?? 0;
 
   return (
-    <div className="relative bg-bg-tertiary rounded-lg overflow-hidden border border-white/5">
+    <div className="relative bg-bg-tertiary rounded-lg overflow-hidden border border-border">
       <canvas
         ref={canvasRef}
         width={600}
         height={80}
         className="w-full h-20 block"
       />
-      <div className="absolute bottom-1 left-2 text-xs text-text-secondary font-mono">
+      <div className="absolute bottom-1 left-2 text-[11px] text-text-muted font-mono">
         {formatTime(currentTimeRef.current)}
       </div>
-      <div className="absolute bottom-1 right-2 text-xs text-text-secondary font-mono">
+      <div className="absolute bottom-1 right-2 text-[11px] text-text-muted font-mono">
         {formatTime(duration)}
       </div>
     </div>

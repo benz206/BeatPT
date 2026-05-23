@@ -1,39 +1,118 @@
+@import url('https://api.fontshare.com/v2/css?f[]=satoshi@300,400,500,700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-bg-primary: #0a0a0f;
-  --color-bg-secondary: #12121a;
-  --color-bg-tertiary: #1a1a2e;
-  --color-accent: #e040fb;
-  --color-accent-2: #00e5ff;
-  --color-accent-3: #76ff03;
-  --color-text-primary: #e0e0e0;
-  --color-text-secondary: #888;
-}
+  --font-sans: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+  --color-bg-primary: #07070b;
+  --color-bg-secondary: #101016;
+  --color-bg-tertiary: #1a1a26;
+  --color-surface: #242432;
+
+  --color-text-primary: #f0eeeb;
+  --color-text-secondary: #a09cac;
+  --color-text-muted: #706c7e;
+
+  --color-border: #282838;
+  --color-border-hover: #383850;
+  --color-border-strong: #4a4a64;
+
+  --color-accent: #d4872c;
+  --color-accent-hover: #e09538;
+  --color-accent-muted: #d4872c33;
+  --color-accent-subtle: #d4872c1a;
+
+  --color-accent-2: #6b9fff;
+  --color-accent-2-hover: #82b0ff;
+  --color-accent-2-muted: #6b9fff33;
+  --color-accent-2-subtle: #6b9fff1a;
+
+  --color-accent-3: #4ade80;
+  --color-success: #4ade80;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
 }
 
 body {
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-sans);
   overflow: hidden;
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-bg-secondary);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
+  background: var(--color-border-hover);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]:focus {
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
   background: var(--color-bg-tertiary);
-  border-radius: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  height: 3px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-bg-secondary);
+  margin-top: -5.5px;
+  transition: transform 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+input[type="range"].accent-blue::-webkit-slider-thumb {
+  background: var(--color-accent-2);
+}
+
+input[type="range"]::-moz-range-track {
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  height: 3px;
+}
+
+input[type="range"]::-moz-range-thumb {
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-bg-secondary);
+}
+
+input[type="range"].accent-blue::-moz-range-thumb {
+  background: var(--color-accent-2);
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '../stores/useAppStore';
+import { Card, Label } from './ui';
 
 interface KeyBubble {
   id: string;
@@ -10,7 +11,7 @@ interface KeyBubble {
   createdAt: number;
 }
 
-const COLORS = ['#e040fb', '#00e5ff', '#76ff03', '#ffea00', '#ff6d00'];
+const COLORS = ['#d4872c', '#6b9fff', '#e8e6e3', '#8a8690'];
 const LIFETIME_MS = 1500;
 
 export function KeyboardVisualizer() {
@@ -51,49 +52,45 @@ export function KeyboardVisualizer() {
   const now = Date.now();
 
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full h-full bg-bg-secondary rounded-xl border border-white/5 overflow-hidden"
-    >
-      <div className="absolute top-2 left-3 z-10">
-        <span className="text-xs font-black uppercase tracking-widest text-text-secondary">
-          Keys
-        </span>
-      </div>
-
-      {!isMashMode && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <p className="text-xs text-text-secondary">Enable Mash Mode to see key presses</p>
+    <Card accent="blue" className="relative w-full h-full overflow-hidden">
+      <div ref={containerRef} className="absolute inset-0">
+        <div className="absolute top-2.5 left-3 z-10">
+          <Label>Keys</Label>
         </div>
-      )}
 
-      {bubbles.map((bubble) => {
-        const age = now - bubble.createdAt;
-        const opacity = Math.max(0, 1 - age / LIFETIME_MS);
-        const scale = 0.8 + 0.2 * (1 - age / LIFETIME_MS);
-        return (
-          <div
-            key={bubble.id}
-            className="absolute flex items-center justify-center rounded-full text-xs font-black border px-2.5 py-1"
-            style={{
-              left: bubble.x,
-              top: bubble.y,
-              color: bubble.color,
-              borderColor: bubble.color,
-              background: `${bubble.color}22`,
-              boxShadow: `0 0 12px ${bubble.color}66`,
-              opacity,
-              transform: `scale(${scale})`,
-              transition: 'opacity 0.1s linear',
-              pointerEvents: 'none',
-              minWidth: '32px',
-              textAlign: 'center',
-            }}
-          >
-            {bubble.key}
+        {!isMashMode && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-xs text-text-muted">Enable Mash Mode</p>
           </div>
-        );
-      })}
-    </div>
+        )}
+
+        {bubbles.map((bubble) => {
+          const age = now - bubble.createdAt;
+          const opacity = Math.max(0, 1 - age / LIFETIME_MS);
+          const scale = 0.85 + 0.15 * (1 - age / LIFETIME_MS);
+          return (
+            <div
+              key={bubble.id}
+              className="absolute flex items-center justify-center rounded text-xs font-medium border px-2.5 py-1"
+              style={{
+                left: bubble.x,
+                top: bubble.y,
+                color: bubble.color,
+                borderColor: `${bubble.color}33`,
+                background: `${bubble.color}0a`,
+                opacity,
+                transform: `scale(${scale})`,
+                transition: 'opacity 0.1s linear',
+                pointerEvents: 'none',
+                minWidth: '32px',
+                textAlign: 'center',
+              }}
+            >
+              {bubble.key}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

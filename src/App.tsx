@@ -19,23 +19,23 @@ export default function App() {
       <Header />
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-64 flex-shrink-0 overflow-hidden">
+        <aside className="w-60 shrink-0 overflow-hidden">
           <TrackLibrary />
         </aside>
 
         <main className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex flex-1 gap-3 p-3 overflow-hidden">
-            <div className="flex-1 overflow-y-auto">
+          <div className="flex flex-1 gap-4 p-4 overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0">
               <Deck deckId="A" />
             </div>
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 flex flex-col min-h-0">
               <Deck deckId="B" />
             </div>
           </div>
 
           <Crossfader />
 
-          <div className="flex gap-3 p-3 h-44 flex-shrink-0">
+          <div className="flex gap-3 p-4 h-52 shrink-0">
             <div className="flex-1">
               <ActionLog />
             </div>

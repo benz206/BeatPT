@@ -1,4 +1,5 @@
 import { useAppStore } from '../stores/useAppStore';
+import { Card, Label } from './ui';
 
 export function TransitionMeter() {
   const confidence = useAppStore((s) => s.transitionConfidence);
@@ -8,10 +9,8 @@ export function TransitionMeter() {
   const dashOffset = circumference * (1 - confidence / 100);
 
   return (
-    <div className="flex flex-col items-center gap-2 bg-bg-secondary rounded-xl border border-white/5 p-3 h-full">
-      <span className="text-xs font-black uppercase tracking-widest text-text-secondary text-center">
-        Transition Confidence
-      </span>
+    <Card accent="default" className="flex flex-col items-center gap-2 p-3 h-full">
+      <Label className="text-center">Transition</Label>
 
       <div className="flex-1 flex items-center justify-center">
         <div className="relative w-24 h-24">
@@ -21,31 +20,28 @@ export function TransitionMeter() {
               cy="44"
               r={radius}
               fill="none"
-              stroke="rgba(255,255,255,0.05)"
-              strokeWidth="8"
+              stroke="var(--color-border)"
+              strokeWidth="6"
             />
             <circle
               cx="44"
               cy="44"
               r={radius}
               fill="none"
-              stroke="#e040fb"
-              strokeWidth="8"
+              stroke="var(--color-accent)"
+              strokeWidth="6"
               strokeLinecap="round"
               strokeDasharray={circumference}
               strokeDashoffset={dashOffset}
-              style={{
-                transition: 'stroke-dashoffset 0.5s ease',
-                filter: 'drop-shadow(0 0 6px #e040fb88)',
-              }}
+              style={{ transition: 'stroke-dashoffset 0.5s ease' }}
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xl font-black text-text-primary">{Math.round(confidence)}</span>
-            <span className="text-[10px] text-text-secondary">%</span>
+            <span className="text-lg font-bold text-text-primary">{Math.round(confidence)}</span>
+            <span className="text-[10px] text-text-muted">%</span>
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

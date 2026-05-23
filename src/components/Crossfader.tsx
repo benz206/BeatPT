@@ -9,27 +9,17 @@ export function Crossfader() {
     setCrossfader(parseFloat(e.target.value));
   };
 
-  const pct = ((crossfaderPosition + 1) / 2) * 100;
   const isLeft = crossfaderPosition < -0.1;
   const isRight = crossfaderPosition > 0.1;
 
   return (
-    <div className="flex items-center gap-4 px-6 py-3 bg-bg-secondary border-b border-white/5">
-      <span
-        className="text-sm font-black uppercase tracking-wider w-6 text-center transition-all duration-200"
-        style={{ color: isLeft ? '#e040fb' : '#ffffff33' }}
-      >
+    <div className="flex items-center gap-4 px-6 py-3 bg-bg-secondary border-y border-border">
+      <span className={`text-xs font-bold w-6 text-center transition-colors duration-200 ${isLeft ? 'text-accent' : 'text-text-muted'}`}>
         A
       </span>
 
       <div className="flex-1 relative flex items-center">
-        <div className="absolute inset-x-0 h-1 rounded-full overflow-hidden"
-          style={{ background: 'linear-gradient(90deg, #e040fb44, #00e5ff44)' }}
-        />
-        <div
-          className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3 bg-white/20 rounded-full"
-          style={{ left: '50%' }}
-        />
+        <div className="absolute left-1/2 top-1/2 -translate-x-px -translate-y-1/2 w-px h-3 bg-border-strong rounded-full" />
         <input
           type="range"
           min={-1}
@@ -37,29 +27,15 @@ export function Crossfader() {
           step={0.01}
           value={crossfaderPosition}
           onChange={handleChange}
-          className="relative w-full h-6 cursor-pointer appearance-none bg-transparent"
-          style={{
-            accentColor: crossfaderPosition < 0 ? '#e040fb' : '#00e5ff',
-          }}
-        />
-        <div
-          className="absolute bottom-0 w-1 h-1 rounded-full"
-          style={{
-            left: `calc(${pct}% - 2px)`,
-            background: crossfaderPosition < 0 ? '#e040fb' : '#00e5ff',
-            boxShadow: `0 0 6px ${crossfaderPosition < 0 ? '#e040fb' : '#00e5ff'}`,
-          }}
+          className={`relative w-full h-6 ${crossfaderPosition > 0 ? 'accent-blue' : ''}`}
         />
       </div>
 
-      <span
-        className="text-sm font-black uppercase tracking-wider w-6 text-center transition-all duration-200"
-        style={{ color: isRight ? '#00e5ff' : '#ffffff33' }}
-      >
+      <span className={`text-xs font-bold w-6 text-center transition-colors duration-200 ${isRight ? 'text-accent-2' : 'text-text-muted'}`}>
         B
       </span>
 
-      <span className="text-xs font-mono text-text-secondary w-12 text-right">
+      <span className="text-[11px] font-mono text-text-muted w-12 text-right">
         {crossfaderPosition > 0 ? '+' : ''}{crossfaderPosition.toFixed(2)}
       </span>
     </div>
