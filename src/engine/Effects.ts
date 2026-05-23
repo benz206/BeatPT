@@ -11,12 +11,9 @@ export class EchoOut implements DJEffect {
   private delay: DelayNode | null = null;
   private feedback: GainNode | null = null;
   private wetGain: GainNode | null = null;
-  private dryGain: GainNode | null = null;
-  private ctx: AudioContext | null = null;
   private removeTimer: ReturnType<typeof setTimeout> | null = null;
 
   apply(deckGainNode: GainNode, bpm: number, audioContext: AudioContext): void {
-    this.ctx = audioContext;
     const now = audioContext.currentTime;
     const delayTime = beatDuration(bpm) * 0.75;
 
@@ -28,23 +25,20 @@ export class EchoOut implements DJEffect {
 
     this.wetGain = audioContext.createGain();
     this.wetGain.gain.setValueAtTime(0, now);
-    this.wetGain.gain.linearRampToValueAtTime(0.8, now + 0.1);
+    this.wetGain.gain.linearRampToValueAtTime(0.6, now + 0.1);
 
-    this.dryGain = audioContext.createGain();
-    this.dryGain.gain.setValueAtTime(1, now);
-
-    deckGainNode.connect(this.dryGain);
+    // Wet path: deckGainNode → wetGain → delay ⟳ feedback → destination
     deckGainNode.connect(this.wetGain);
     this.wetGain.connect(this.delay);
     this.delay.connect(this.feedback);
     this.feedback.connect(this.delay);
-    this.delay.connect(deckGainNode.context.destination);
+    this.delay.connect(audioContext.destination);
 
-    // Fade out dry signal so the echo carries the track away
-    this.dryGain.gain.setValueAtTime(1, now + 0.5);
-    this.dryGain.gain.linearRampToValueAtTime(0, now + 2.5);
+    // Fade wet back out before removal
+    this.wetGain.gain.setValueAtTime(0.6, now + 2.5);
+    this.wetGain.gain.linearRampToValueAtTime(0, now + 3.5);
 
-    this.removeTimer = setTimeout(() => this.remove(), 3500);
+    this.removeTimer = setTimeout(() => this.remove(), 4000);
   }
 
   remove(): void {
@@ -53,13 +47,10 @@ export class EchoOut implements DJEffect {
       this.wetGain?.disconnect();
       this.delay?.disconnect();
       this.feedback?.disconnect();
-      this.dryGain?.disconnect();
     } catch (_) {}
     this.delay = null;
     this.feedback = null;
     this.wetGain = null;
-    this.dryGain = null;
-    this.ctx = null;
   }
 }
 

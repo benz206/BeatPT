@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
-    "vite:dev": "vite",
-    "vite:build": "vite build"
+    "dev": "bunx tauri dev",
+    "build": "bunx tauri build",
+    "vite:dev": "bunx vite",
+    "vite:build": "bunx vite build"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +19,7 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
+    "esbuild": "^0.28.0",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.14"

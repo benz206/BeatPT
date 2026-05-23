@@ -3,13 +3,12 @@
   "version": "0.1.0",
   "identifier": "com.beatpt.app",
   "build": {
-    "beforeDevCommand": "npm run vite:dev",
+    "beforeDevCommand": "bun run vite:dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run vite:build",
+    "beforeBuildCommand": "bun run vite:build",
     "frontendDist": "../dist"
   },
   "app": {
-    "title": "BeatPT",
     "windows": [
       {
         "title": "BeatPT",
@@ -34,12 +33,6 @@
       "icons/icon.png"
     ]
   },
-  "plugins": {
-    "dialog": {},
-    "fs": {
-      "scope": {
-        "allow": ["**"]
-      }
-    }
-  }
+  "plugins": {}
+
 }

@@ -1,5 +1,6 @@
 import { AudioEngine } from './AudioEngine';
 import { EchoOut, FilterSweep, getBassSwapSettings, StutterEffect, Reverb } from './Effects';
+import { useAppStore } from '../stores/useAppStore';
 
 export type DJAction = {
   name: string;
@@ -28,6 +29,12 @@ function inactiveDeck(): 'A' | 'B' {
 }
 
 function bpmGuess(): number {
+  const state = useAppStore.getState();
+  const aDeck = state.deckA.track;
+  const bDeck = state.deckB.track;
+  if (aDeck && bDeck) return (aDeck.bpm + bDeck.bpm) / 2;
+  if (aDeck) return aDeck.bpm;
+  if (bDeck) return bDeck.bpm;
   return 128;
 }
 

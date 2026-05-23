@@ -38,14 +38,10 @@ function fileToArrayBuffer(file: File): Promise<ArrayBuffer> {
 export function useAudioEngine() {
   const engineRef = useRef<AudioEngine>(AudioEngine.getInstance());
 
-  const { addTrack, loadTrackToDeck, updateDeck, setCrossfaderPosition } = useAppStore(
-    (state) => ({
-      addTrack: state.addTrack,
-      loadTrackToDeck: state.loadTrackToDeck,
-      updateDeck: state.updateDeck,
-      setCrossfaderPosition: state.setCrossfaderPosition,
-    })
-  );
+  const addTrack = useAppStore((s) => s.addTrack);
+  const loadTrackToDeck = useAppStore((s) => s.loadTrackToDeck);
+  const updateDeck = useAppStore((s) => s.updateDeck);
+  const setCrossfaderPosition = useAppStore((s) => s.setCrossfaderPosition);
 
   const loadTrack = useCallback(
     async (deck: Deck, file: File) => {
