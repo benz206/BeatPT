@@ -117,15 +117,17 @@ async function parkCrossfader(ctx: TransitionContext, signal: AbortSignal, fromS
 
 interface BlendOpts {
   tempoMatch: boolean;
-  sweepHighs?: boolean;
-  drainOutgoing?: boolean;
+  inHighCut: number;  // dB the incoming highs start below their setting, swept in over the first 60%
+  inMidCut: number;   // same for the incoming mids
+  outHighDrop: number; // dB the outgoing highs recede over the back half
+  outMidDrop: number;  // same for the outgoing mids
 }
 
 const BLEND_OPTS: Record<Exclude<TransitionType, 'echo-drop'>, BlendOpts> = {
-  'long-blend': { tempoMatch: true },
-  'tempo-ramp': { tempoMatch: true },
-  'filter-sweep': { tempoMatch: true, sweepHighs: true },
-  'breakdown-bridge': { tempoMatch: false, drainOutgoing: true },
+  'long-blend': { tempoMatch: true, inHighCut: 4, inMidCut: 3, outHighDrop: 4, outMidDrop: 5 },
+  'tempo-ramp': { tempoMatch: true, inHighCut: 4, inMidCut: 3, outHighDrop: 4, outMidDrop: 5 },
+  'filter-sweep': { tempoMatch: true, inHighCut: 8, inMidCut: 4, outHighDrop: 8, outMidDrop: 5 },
+  'breakdown-bridge': { tempoMatch: false, inHighCut: 4, inMidCut: 6, outHighDrop: 6, outMidDrop: 8 },
 };
 
 export function executeTransition(ctx: TransitionContext): AbortController {
@@ -149,6 +151,7 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   const savedFromMid = engine.getEQ(fromDeck, 'mid');
   const savedFromHigh = engine.getEQ(fromDeck, 'high');
   const savedToLow = engine.getEQ(toDeck, 'low');
+  const savedToMid = engine.getEQ(toDeck, 'mid');
   const savedToHigh = engine.getEQ(toDeck, 'high');
 
   const fromSide = fromDeck === 'A' ? -1 : 1;
@@ -156,9 +159,11 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   await parkCrossfader(ctx, signal, fromSide);
   if (signal.aborted) return;
 
-  // Incoming starts beat-aligned and tempo-matched, with its bass out of the way
+  // Incoming starts beat-aligned and tempo-matched, with its bass out of the
+  // way and its mids/highs pulled back so it eases in rather than slamming in
   engine.setEQ(toDeck, 'low', -12);
-  if (opts.sweepHighs) engine.setEQ(toDeck, 'high', -8);
+  engine.setEQ(toDeck, 'mid', Math.max(-12, savedToMid - opts.inMidCut));
+  engine.setEQ(toDeck, 'high', Math.max(-12, savedToHigh - opts.inHighCut));
   startIncomingAligned(ctx, rate);
   ctx.onProgress(86, 'Beatmatched...');
 
@@ -167,6 +172,11 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
     engine.setCrossfader(pos, TICK_S);
     ctx.setCrossfaderPosition(pos);
 
+    // Incoming mids/highs sweep up to their settings over the first 60%
+    const inT = smoothstep(Math.min(1, t / 0.6));
+    engine.setEQ(toDeck, 'mid', Math.max(-12, savedToMid - opts.inMidCut) + opts.inMidCut * inT, TICK_S);
+    engine.setEQ(toDeck, 'high', Math.max(-12, savedToHigh - opts.inHighCut) + opts.inHighCut * inT, TICK_S);
+
     // Swap basslines through the middle of the blend
     const swapT = Math.min(1, Math.max(0, (t - 0.45) / 0.2));
     if (swapT > 0) {
@@ -174,16 +184,12 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
       engine.setEQ(toDeck, 'low', -12 + (savedToLow + 12) * swapT, TICK_S);
     }
 
-    if (opts.sweepHighs) {
-      const sweepT = Math.min(1, t * 2);
-      engine.setEQ(toDeck, 'high', -8 + (savedToHigh + 8) * sweepT, TICK_S);
-    }
-
-    // Breakdown flavor: drain the outgoing mids/highs through the back half
-    if (opts.drainOutgoing && t > 0.5) {
-      const drainT = (t - 0.5) * 2;
-      engine.setEQ(fromDeck, 'mid', savedFromMid - drainT * 8, TICK_S);
-      engine.setEQ(fromDeck, 'high', savedFromHigh - drainT * 6, TICK_S);
+    // Outgoing mids/highs recede through the back half so the old track
+    // steps aside instead of just getting quieter
+    if (t > 0.5) {
+      const outT = smoothstep((t - 0.5) * 2);
+      engine.setEQ(fromDeck, 'mid', savedFromMid - outT * opts.outMidDrop, TICK_S);
+      engine.setEQ(fromDeck, 'high', savedFromHigh - outT * opts.outHighDrop, TICK_S);
     }
 
     ctx.onProgress(Math.round(86 + t * 9), 'Blending...');
@@ -196,7 +202,8 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   engine.setEQ(fromDeck, 'mid', savedFromMid);
   engine.setEQ(fromDeck, 'high', savedFromHigh);
   engine.setEQ(toDeck, 'low', savedToLow);
-  if (opts.sweepHighs) engine.setEQ(toDeck, 'high', savedToHigh);
+  engine.setEQ(toDeck, 'mid', savedToMid);
+  engine.setEQ(toDeck, 'high', savedToHigh);
 
   // Ease the new track back to its own tempo, slowly enough not to hear the bend
   if (Math.abs(rate - toSpeed) > 0.002) {
