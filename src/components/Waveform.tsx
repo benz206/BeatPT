@@ -81,7 +81,11 @@ export function Waveform({ deckId }: WaveformProps) {
     const rect = canvas.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
     const position = Math.max(0, pct * track.duration);
-    AudioEngine.getInstance().seek(deckId, position);
+    const engine = AudioEngine.getInstance();
+    engine.seek(deckId, position);
+    if (!engine.getLoop(deckId)) {
+      useAppStore.getState().updateDeck(deckId, { loop: null });
+    }
   }, [deckId, track]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {

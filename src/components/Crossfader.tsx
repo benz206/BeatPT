@@ -3,7 +3,8 @@ import { useAudioEngine } from '../hooks/useAudioEngine';
 
 export function Crossfader() {
   const crossfaderPosition = useAppStore((s) => s.crossfaderPosition);
-  const { setCrossfader } = useAudioEngine();
+  const masterVolume = useAppStore((s) => s.masterVolume);
+  const { setCrossfader, setMasterVolume } = useAudioEngine();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setCrossfader(parseFloat(e.target.value));
@@ -37,6 +38,22 @@ export function Crossfader() {
 
       <span className="text-[11px] font-mono text-text-muted w-12 text-right">
         {crossfaderPosition > 0 ? '+' : ''}{crossfaderPosition.toFixed(2)}
+      </span>
+
+      <div className="w-px h-6 bg-border mx-2" />
+
+      <span className="text-[10px] font-bold text-text-muted tracking-wide">MASTER</span>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={masterVolume}
+        onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
+        className="w-28 h-6"
+      />
+      <span className="text-[11px] font-mono text-text-muted w-8 text-right">
+        {Math.round(masterVolume * 100)}
       </span>
     </div>
   );

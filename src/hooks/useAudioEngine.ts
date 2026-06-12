@@ -54,9 +54,16 @@ export function useAudioEngine() {
     [updateDeck]
   );
 
-  const seek = useCallback((deck: Deck, position: number) => {
-    engineRef.current.seek(deck, position);
-  }, []);
+  const seek = useCallback(
+    (deck: Deck, position: number) => {
+      const engine = engineRef.current;
+      engine.seek(deck, position);
+      if (!engine.getLoop(deck)) {
+        updateDeck(deck, { loop: null });
+      }
+    },
+    [updateDeck]
+  );
 
   const setCrossfader = useCallback(
     (value: number) => {
@@ -100,6 +107,95 @@ export function useAudioEngine() {
     return engineRef.current.getAnalyserNode(deck);
   }, []);
 
+  const setMasterVolume = useCallback((value: number) => {
+    engineRef.current.setMasterVolume(value);
+    useAppStore.getState().setMasterVolume(value);
+  }, []);
+
+  // Match this deck's effective BPM to the other deck's
+  const sync = useCallback(
+    (deck: Deck) => {
+      const state = useAppStore.getState();
+      const thisState = deck === 'A' ? state.deckA : state.deckB;
+      const otherState = deck === 'A' ? state.deckB : state.deckA;
+      if (!thisState.track || !otherState.track) return;
+
+      const targetBPM = otherState.track.bpm * otherState.speed;
+      const rate = Math.max(0.5, Math.min(2, targetBPM / thisState.track.bpm));
+      engineRef.current.setPlaybackRate(deck, rate);
+      updateDeck(deck, { speed: rate });
+    },
+    [updateDeck]
+  );
+
+  const setHotCue = useCallback(
+    (deck: Deck, slot: number) => {
+      const state = useAppStore.getState();
+      const deckState = deck === 'A' ? state.deckA : state.deckB;
+      if (!deckState.track) return;
+
+      const hotCues = [...deckState.hotCues];
+      hotCues[slot] = engineRef.current.getPlaybackPosition(deck);
+      updateDeck(deck, { hotCues });
+    },
+    [updateDeck]
+  );
+
+  const jumpToHotCue = useCallback(
+    (deck: Deck, slot: number) => {
+      const state = useAppStore.getState();
+      const deckState = deck === 'A' ? state.deckA : state.deckB;
+      const position = deckState.hotCues[slot];
+      if (position === null || position === undefined) return;
+      seek(deck, position);
+    },
+    [seek]
+  );
+
+  const clearHotCue = useCallback(
+    (deck: Deck, slot: number) => {
+      const state = useAppStore.getState();
+      const deckState = deck === 'A' ? state.deckA : state.deckB;
+      const hotCues = [...deckState.hotCues];
+      hotCues[slot] = null;
+      updateDeck(deck, { hotCues });
+    },
+    [updateDeck]
+  );
+
+  // Loop N beats starting from the most recent beat marker
+  const setBeatLoop = useCallback(
+    (deck: Deck, beats: number) => {
+      const engine = engineRef.current;
+      const state = useAppStore.getState();
+      const deckState = deck === 'A' ? state.deckA : state.deckB;
+      const track = deckState.track;
+      if (!track) return;
+
+      const position = engine.getPlaybackPosition(deck);
+      let start = position;
+      for (const beat of track.beatPositions) {
+        if (beat > position) break;
+        start = beat;
+      }
+
+      const end = start + beats * (60 / track.bpm);
+      if (end > track.duration) return;
+
+      engine.setLoop(deck, start, end);
+      updateDeck(deck, { loop: { start, end, beats } });
+    },
+    [updateDeck]
+  );
+
+  const clearLoop = useCallback(
+    (deck: Deck) => {
+      engineRef.current.clearLoop(deck);
+      updateDeck(deck, { loop: null });
+    },
+    [updateDeck]
+  );
+
   return {
     loadTrack,
     play,
@@ -111,5 +207,12 @@ export function useAudioEngine() {
     setSpeed,
     setEQ,
     getAnalyserNode,
+    setMasterVolume,
+    sync,
+    setHotCue,
+    jumpToHotCue,
+    clearHotCue,
+    setBeatLoop,
+    clearLoop,
   };
 }

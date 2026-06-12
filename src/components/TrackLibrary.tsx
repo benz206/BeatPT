@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useAppStore } from '../stores/useAppStore';
+import { AudioEngine } from '../engine/AudioEngine';
 import { useFileImport } from '../hooks/useFileImport';
 import { Label, Button } from './ui';
 import type { Track } from '../stores/useAppStore';
@@ -16,7 +17,6 @@ export function TrackLibrary() {
   const handleLoadToDeck = useCallback(
     async (track: Track, deck: 'A' | 'B') => {
       if (track.audioBuffer) {
-        const { AudioEngine } = await import('../engine/AudioEngine');
         AudioEngine.getInstance().loadTrack(deck, track.audioBuffer);
         useAppStore.getState().loadTrackToDeck(deck, track);
       }

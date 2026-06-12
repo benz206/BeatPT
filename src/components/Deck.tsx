@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useAppStore } from '../stores/useAppStore';
 import { useAudioEngine } from '../hooks/useAudioEngine';
 import { Waveform } from './Waveform';
+import { LevelMeter } from './LevelMeter';
 import { Card, Label, Badge } from './ui';
 
 interface DeckProps {
@@ -10,10 +11,14 @@ interface DeckProps {
 
 export function Deck({ deckId }: DeckProps) {
   const deckState = useAppStore((s) => (deckId === 'A' ? s.deckA : s.deckB));
-  const { togglePlayback, setVolume, setSpeed, setEQ, loadTrack } = useAudioEngine();
+  const otherHasTrack = useAppStore((s) => !!(deckId === 'A' ? s.deckB : s.deckA).track);
+  const {
+    togglePlayback, setVolume, setSpeed, setEQ, loadTrack,
+    sync, setHotCue, jumpToHotCue, clearHotCue, setBeatLoop, clearLoop,
+  } = useAudioEngine();
 
   const isA = deckId === 'A';
-  const { track, isPlaying, volume, speed, eq } = deckState;
+  const { track, isPlaying, volume, speed, eq, hotCues, loop } = deckState;
   const sliderClass = isA ? '' : 'accent-blue';
 
   const handleFileImport = useCallback(async () => {
@@ -51,6 +56,68 @@ export function Deck({ deckId }: DeckProps) {
         </div>
 
         <Waveform deckId={deckId} />
+
+        {track && (
+          <div className="flex items-center gap-1">
+            {hotCues.map((cue, slot) => (
+              <button
+                key={slot}
+                onClick={(e) => {
+                  if (e.shiftKey) clearHotCue(deckId, slot);
+                  else if (cue === null) setHotCue(deckId, slot);
+                  else jumpToHotCue(deckId, slot);
+                }}
+                title={
+                  cue === null
+                    ? 'Set hot cue at current position'
+                    : `Jump to ${formatDuration(cue)} — shift-click to clear`
+                }
+                className={`w-7 h-6 text-[10px] font-mono font-bold rounded border transition-all duration-150 cursor-pointer ${
+                  cue !== null
+                    ? isA
+                      ? 'border-accent/40 bg-accent/15 text-accent'
+                      : 'border-accent-2/40 bg-accent-2/15 text-accent-2'
+                    : 'border-border text-text-muted hover:border-border-hover hover:text-text-secondary'
+                }`}
+              >
+                {slot + 1}
+              </button>
+            ))}
+
+            <div className="w-px h-4 bg-border mx-1.5" />
+
+            {[1, 2, 4, 8].map((beats) => (
+              <button
+                key={beats}
+                onClick={() => (loop?.beats === beats ? clearLoop(deckId) : setBeatLoop(deckId, beats))}
+                title={loop?.beats === beats ? 'Release loop' : `Loop ${beats} beat${beats > 1 ? 's' : ''}`}
+                className={`w-7 h-6 text-[10px] font-mono font-bold rounded border transition-all duration-150 cursor-pointer ${
+                  loop?.beats === beats
+                    ? 'border-success/50 bg-success/15 text-success'
+                    : 'border-border text-text-muted hover:border-border-hover hover:text-text-secondary'
+                }`}
+              >
+                {beats}
+              </button>
+            ))}
+            <span className="text-[9px] text-text-muted font-medium ml-0.5">LOOP</span>
+
+            <div className="flex-1" />
+
+            <button
+              onClick={() => sync(deckId)}
+              disabled={!otherHasTrack}
+              title="Match BPM to the other deck"
+              className={`px-2.5 h-6 text-[10px] font-bold rounded border transition-all duration-150 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                isA
+                  ? 'border-accent/40 text-accent hover:bg-accent/10'
+                  : 'border-accent-2/40 text-accent-2 hover:bg-accent-2/10'
+              }`}
+            >
+              SYNC
+            </button>
+          </div>
+        )}
 
         <div className="min-h-[40px]">
           {track ? (
@@ -136,6 +203,11 @@ export function Deck({ deckId }: DeckProps) {
       )}
 
       <div className="flex items-end justify-center gap-4">
+        <div className="flex flex-col items-center gap-1">
+          <Label>Lvl</Label>
+          <LevelMeter deckId={deckId} />
+        </div>
+
         <div className="flex flex-col items-center gap-1">
           <Label>Vol</Label>
           <input

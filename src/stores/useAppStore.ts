@@ -15,6 +15,12 @@ export interface Track {
   albumArt?: string;
 }
 
+export interface LoopState {
+  start: number;
+  end: number;
+  beats: number;
+}
+
 export interface DeckState {
   track: Track | null;
   isPlaying: boolean;
@@ -22,6 +28,8 @@ export interface DeckState {
   volume: number;
   speed: number;
   eq: { low: number; mid: number; high: number };
+  hotCues: (number | null)[];
+  loop: LoopState | null;
 }
 
 export interface ActionLog {
@@ -48,6 +56,10 @@ interface AppState {
   crossfaderPosition: number;
   setCrossfaderPosition: (pos: number) => void;
 
+  // Master
+  masterVolume: number;
+  setMasterVolume: (value: number) => void;
+
   // Action log
   actionLog: ActionLog[];
   addAction: (action: Omit<ActionLog, 'id' | 'timestamp'>) => void;
@@ -72,6 +84,8 @@ const defaultDeckState: DeckState = {
   volume: 1,
   speed: 1,
   eq: { low: 0, mid: 0, high: 0 },
+  hotCues: [null, null, null, null],
+  loop: null,
 };
 
 export const useAppStore = create<AppState>((set) => ({
@@ -95,16 +109,29 @@ export const useAppStore = create<AppState>((set) => ({
         : { deckB: { ...state.deckB, ...updates } }
     ),
   loadTrackToDeck: (deck, track) =>
-    set((state) =>
-      deck === 'A'
-        ? { deckA: { ...state.deckA, track, isPlaying: false, currentTime: 0, speed: 1 } }
-        : { deckB: { ...state.deckB, track, isPlaying: false, currentTime: 0, speed: 1 } }
-    ),
+    set((state) => {
+      const reset = {
+        track,
+        isPlaying: false,
+        currentTime: 0,
+        speed: 1,
+        hotCues: [null, null, null, null] as (number | null)[],
+        loop: null,
+      };
+      return deck === 'A'
+        ? { deckA: { ...state.deckA, ...reset } }
+        : { deckB: { ...state.deckB, ...reset } };
+    }),
 
   // Crossfader
   crossfaderPosition: 0,
   setCrossfaderPosition: (pos) =>
     set({ crossfaderPosition: Math.max(-1, Math.min(1, pos)) }),
+
+  // Master
+  masterVolume: 1,
+  setMasterVolume: (value) =>
+    set({ masterVolume: Math.max(0, Math.min(1, value)) }),
 
   // Action log
   actionLog: [],
