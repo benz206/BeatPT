@@ -1,5 +1,8 @@
 export { AudioEngine } from './AudioEngine';
-export { detectBPM } from './BPMDetector';
+export { computeOnsetEnvelope, detectBPM, trackBeats, detectDownbeat } from './BPMDetector';
+export type { TrackKey } from './KeyDetector';
+export { detectKey, keyCompatibility } from './KeyDetector';
+export { computeTrimGain } from './Loudness';
 export type { DJEffect, BassSwapSettings } from './Effects';
 export { EchoOut, FilterSweep, getBassSwapSettings, StutterEffect, Reverb } from './Effects';
 export type { DJAction, MixPhase, ConflictGroup } from './DJActions';

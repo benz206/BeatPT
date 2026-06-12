@@ -1,5 +1,7 @@
-import { detectBPM, detectBeatPhase, generateBeatPositions } from './BPMDetector';
+import { computeOnsetEnvelope, detectBPM, trackBeats, detectDownbeat } from './BPMDetector';
 import { analyzeEnergy, type EnergySegment } from './EnergyAnalyzer';
+import { detectKey, type TrackKey } from './KeyDetector';
+import { computeTrimGain } from './Loudness';
 
 export interface AnalysisRequest {
   id: number;
@@ -11,6 +13,9 @@ export interface AnalysisRequest {
 export interface AnalysisResult {
   id: number;
   bpm: number;
+  key: TrackKey;
+  gain: number;
+  downbeatIndex: number;
   waveformData: number[];
   beatPositions: number[];
   energySegments: EnergySegment[];
@@ -39,11 +44,15 @@ const ctx = self as unknown as Worker;
 ctx.onmessage = (e: MessageEvent<AnalysisRequest>) => {
   const { id, channelData, sampleRate, duration } = e.data;
 
-  const bpm = detectBPM(channelData, sampleRate);
+  const onsetEnv = computeOnsetEnvelope(channelData, sampleRate);
+  const bpm = detectBPM(onsetEnv);
+  const beatPositions = trackBeats(onsetEnv, bpm, duration);
+  const downbeatIndex = detectDownbeat(channelData, sampleRate, beatPositions);
   const waveformData = generateWaveformData(channelData);
-  const beatPositions = generateBeatPositions(bpm, duration, detectBeatPhase(channelData, sampleRate, bpm));
-  const energySegments = analyzeEnergy(channelData, sampleRate, duration, beatPositions);
+  const energySegments = analyzeEnergy(channelData, sampleRate, duration, beatPositions, downbeatIndex);
+  const key = detectKey(channelData, sampleRate);
+  const gain = computeTrimGain(channelData, sampleRate);
 
-  const result: AnalysisResult = { id, bpm, waveformData, beatPositions, energySegments };
+  const result: AnalysisResult = { id, bpm, key, gain, downbeatIndex, waveformData, beatPositions, energySegments };
   ctx.postMessage(result);
 };

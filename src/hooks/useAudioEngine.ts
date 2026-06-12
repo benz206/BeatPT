@@ -18,7 +18,7 @@ export function useAudioEngine() {
     async (deck: Deck, file: File) => {
       const track = await analyzeTrackFile(file);
       addTrack(track);
-      engineRef.current.loadTrack(deck, track.audioBuffer!);
+      engineRef.current.loadTrack(deck, track.audioBuffer!, track.gain);
       loadTrackToDeck(deck, track);
     },
     [addTrack, loadTrackToDeck]

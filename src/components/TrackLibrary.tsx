@@ -17,7 +17,7 @@ export function TrackLibrary() {
   const handleLoadToDeck = useCallback(
     async (track: Track, deck: 'A' | 'B') => {
       if (track.audioBuffer) {
-        AudioEngine.getInstance().loadTrack(deck, track.audioBuffer);
+        AudioEngine.getInstance().loadTrack(deck, track.audioBuffer, track.gain);
         useAppStore.getState().loadTrackToDeck(deck, track);
       }
       setSelectedTrackId(null);

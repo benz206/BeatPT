@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { EnergySegment } from '../engine/EnergyAnalyzer';
+import type { TrackKey } from '../engine/KeyDetector';
 
 export interface Track {
   id: string;
@@ -7,6 +8,9 @@ export interface Track {
   artist: string;
   duration: number;
   bpm: number;
+  key: TrackKey | null;
+  gain: number;
+  downbeatIndex: number;
   filePath: string;
   audioBuffer: AudioBuffer | null;
   waveformData: number[];

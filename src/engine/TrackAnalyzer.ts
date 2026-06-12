@@ -38,7 +38,7 @@ export async function analyzeTrackFile(file: File): Promise<Track> {
   const arrayBuffer = await file.arrayBuffer();
   const metadata = parseMetadata(arrayBuffer);
   const audioBuffer = await engine.decodeAudioFile(arrayBuffer);
-  const { bpm, waveformData, beatPositions, energySegments } = await analyzeInWorker(audioBuffer);
+  const { bpm, key, gain, downbeatIndex, waveformData, beatPositions, energySegments } = await analyzeInWorker(audioBuffer);
 
   return {
     id: `${file.name}-${file.size}`,
@@ -46,6 +46,9 @@ export async function analyzeTrackFile(file: File): Promise<Track> {
     artist: metadata.artist || 'Unknown Artist',
     duration: audioBuffer.duration,
     bpm,
+    key,
+    gain,
+    downbeatIndex,
     filePath: file.name,
     audioBuffer,
     waveformData,
