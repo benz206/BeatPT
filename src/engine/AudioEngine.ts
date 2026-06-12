@@ -20,9 +20,14 @@ export class AudioEngine {
   private decks: Record<Deck, DeckState>;
   private crossfaderGainA: GainNode;
   private crossfaderGainB: GainNode;
+  private masterGain: GainNode;
   private masterLimiter: DynamicsCompressorNode;
   private crossfaderValue = 0;
   private playbackRates: Record<Deck, number> = { A: 1, B: 1 };
+  private loops: Record<Deck, { start: number; end: number } | null> = { A: null, B: null };
+  private recorder: MediaRecorder | null = null;
+  private recordDest: MediaStreamAudioDestinationNode | null = null;
+  private recordChunks: Blob[] = [];
   private readonly RAMP_TIME = 0.01;
 
   private constructor() {
@@ -36,10 +41,13 @@ export class AudioEngine {
     this.masterLimiter.release.value = 0.1;
     this.masterLimiter.connect(this.ctx.destination);
 
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.connect(this.masterLimiter);
+
     this.crossfaderGainA = this.ctx.createGain();
     this.crossfaderGainB = this.ctx.createGain();
-    this.crossfaderGainA.connect(this.masterLimiter);
-    this.crossfaderGainB.connect(this.masterLimiter);
+    this.crossfaderGainA.connect(this.masterGain);
+    this.crossfaderGainB.connect(this.masterGain);
 
     this.decks = {
       A: this.createDeckState(this.crossfaderGainA),
@@ -112,6 +120,7 @@ export class AudioEngine {
     state.buffer = audioBuffer;
     state.pauseOffset = 0;
     this.playbackRates[deck] = 1;
+    this.loops[deck] = null;
   }
 
   play(deck: Deck): void {
@@ -125,6 +134,12 @@ export class AudioEngine {
     const source = this.ctx.createBufferSource();
     source.buffer = state.buffer;
     source.playbackRate.value = this.playbackRates[deck];
+    const loop = this.loops[deck];
+    if (loop) {
+      source.loop = true;
+      source.loopStart = loop.start;
+      source.loopEnd = loop.end;
+    }
     source.connect(state.gainNode);
     source.start(0, state.pauseOffset);
     source.onended = () => {
@@ -143,8 +158,7 @@ export class AudioEngine {
     const state = this.decks[deck];
     if (!state.isPlaying || !state.source) return;
 
-    const elapsed = this.ctx.currentTime - state.startTime;
-    state.pauseOffset = state.pauseOffset + elapsed * this.playbackRates[deck];
+    state.pauseOffset = this.getPlaybackPosition(deck);
     state.source.onended = null;
     state.source.stop();
     state.source = null;
@@ -174,6 +188,11 @@ export class AudioEngine {
     const state = this.decks[deck];
     if (!state.buffer) return;
 
+    const loop = this.loops[deck];
+    if (loop && (position < loop.start || position > loop.end)) {
+      this.loops[deck] = null;
+    }
+
     const wasPlaying = state.isPlaying;
 
     if (state.source) {
@@ -192,19 +211,64 @@ export class AudioEngine {
 
   getPlaybackPosition(deck: Deck): number {
     const state = this.decks[deck];
+    let pos = state.pauseOffset;
     if (state.isPlaying) {
       const elapsed = this.ctx.currentTime - state.startTime;
-      return state.pauseOffset + elapsed * this.playbackRates[deck];
+      pos += elapsed * this.playbackRates[deck];
     }
-    return state.pauseOffset;
+    const loop = this.loops[deck];
+    if (loop && loop.end > loop.start && pos > loop.end) {
+      pos = loop.start + ((pos - loop.start) % (loop.end - loop.start));
+    }
+    return pos;
   }
 
   setPlaybackRate(deck: Deck, rate: number): void {
-    this.playbackRates[deck] = rate;
     const state = this.decks[deck];
+    if (state.isPlaying && state.source) {
+      // Rebase timing so position tracking stays correct across rate changes
+      state.pauseOffset = this.getPlaybackPosition(deck);
+      state.startTime = this.ctx.currentTime;
+    }
+    this.playbackRates[deck] = rate;
     if (state.source) {
       state.source.playbackRate.value = rate;
     }
+  }
+
+  setLoop(deck: Deck, start: number, end: number): void {
+    const state = this.decks[deck];
+    if (!state.buffer || end <= start) return;
+
+    if (state.isPlaying && state.source) {
+      // Rebase so the modulo fold in getPlaybackPosition starts from a clean offset
+      state.pauseOffset = this.getPlaybackPosition(deck);
+      state.startTime = this.ctx.currentTime;
+    }
+
+    this.loops[deck] = { start, end };
+    if (state.source) {
+      state.source.loopStart = start;
+      state.source.loopEnd = end;
+      state.source.loop = true;
+    }
+  }
+
+  clearLoop(deck: Deck): void {
+    const state = this.decks[deck];
+    if (this.loops[deck] && state.isPlaying && state.source) {
+      // Rebase to the folded position so tracking stays continuous after release
+      state.pauseOffset = this.getPlaybackPosition(deck);
+      state.startTime = this.ctx.currentTime;
+    }
+    this.loops[deck] = null;
+    if (state.source) {
+      state.source.loop = false;
+    }
+  }
+
+  getLoop(deck: Deck): { start: number; end: number } | null {
+    return this.loops[deck];
   }
 
   setVolume(deck: Deck, value: number): void {
@@ -248,6 +312,51 @@ export class AudioEngine {
     const state = this.decks[deck];
     const node = band === 'low' ? state.eqLow : band === 'mid' ? state.eqMid : state.eqHigh;
     return node.gain.value;
+  }
+
+  setMasterVolume(value: number): void {
+    const gain = this.masterGain.gain;
+    const now = this.ctx.currentTime;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    gain.linearRampToValueAtTime(Math.max(0, Math.min(1, value)), now + this.RAMP_TIME);
+  }
+
+  startRecording(): void {
+    if (this.recorder) return;
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+    if (!this.recordDest) {
+      this.recordDest = this.ctx.createMediaStreamDestination();
+      this.masterLimiter.connect(this.recordDest);
+    }
+    const mimeType = ['audio/webm', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported(t));
+    this.recordChunks = [];
+    this.recorder = new MediaRecorder(this.recordDest.stream, mimeType ? { mimeType } : undefined);
+    this.recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) this.recordChunks.push(e.data);
+    };
+    this.recorder.start(1000);
+  }
+
+  stopRecording(): Promise<Blob> {
+    return new Promise((resolve) => {
+      const recorder = this.recorder;
+      if (!recorder) {
+        resolve(new Blob([], { type: 'audio/webm' }));
+        return;
+      }
+      recorder.onstop = () => {
+        this.recorder = null;
+        resolve(new Blob(this.recordChunks, { type: recorder.mimeType || 'audio/webm' }));
+      };
+      recorder.stop();
+    });
+  }
+
+  isRecording(): boolean {
+    return this.recorder !== null;
   }
 
   getAnalyserNode(deck: Deck): AnalyserNode {
