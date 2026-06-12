@@ -1,3 +1,5 @@
+import keylockProcessorUrl from './keylockProcessor.js?url';
+
 type Deck = 'A' | 'B';
 type EQBand = 'low' | 'mid' | 'high';
 
@@ -10,6 +12,7 @@ interface DeckState {
   eqMid: BiquadFilterNode;
   eqHigh: BiquadFilterNode;
   analyser: AnalyserNode;
+  keylock: AudioWorkletNode | null;
   isPlaying: boolean;
   startTime: number;
   pauseOffset: number;
@@ -56,6 +59,33 @@ export class AudioEngine {
     };
 
     this.setCrossfader(0);
+
+    // Key lock: pitch-compensates varispeed so tempo changes don't shift pitch.
+    // If the worklet can't load, decks keep the direct trim→gain path (plain varispeed).
+    void this.initKeylock();
+  }
+
+  private async initKeylock(): Promise<void> {
+    try {
+      await this.ctx.audioWorklet.addModule(keylockProcessorUrl);
+    } catch (_) {
+      return;
+    }
+    for (const deck of ['A', 'B'] as const) {
+      const state = this.decks[deck];
+      const node = new AudioWorkletNode(this.ctx, 'keylock', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+        channelCount: 2,
+        channelCountMode: 'explicit',
+      });
+      state.trimGain.disconnect(state.gainNode);
+      state.trimGain.connect(node);
+      node.connect(state.gainNode);
+      state.keylock = node;
+      node.port.postMessage({ rate: this.playbackRates[deck], rampTime: 0 });
+    }
   }
 
   static getInstance(): AudioEngine {
@@ -104,6 +134,7 @@ export class AudioEngine {
       eqMid,
       eqHigh,
       analyser,
+      keylock: null,
       isPlaying: false,
       startTime: 0,
       pauseOffset: 0,
@@ -128,6 +159,7 @@ export class AudioEngine {
     state.trimGain.gain.value = Math.max(0, Math.min(2, trim));
     this.playbackRates[deck] = 1;
     this.loops[deck] = null;
+    state.keylock?.port.postMessage({ rate: 1, rampTime: 0 });
   }
 
   play(deck: Deck): void {
@@ -299,6 +331,7 @@ export class AudioEngine {
         param.value = rate;
       }
     }
+    state.keylock?.port.postMessage({ rate, rampTime });
   }
 
   setLoop(deck: Deck, start: number, end: number): void {
