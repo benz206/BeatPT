@@ -21,8 +21,6 @@ export function useAutoTransition() {
   const planCacheRef = useRef<{ deckId: string; plan: ReturnType<typeof selectTransition> } | null>(null);
 
   useEffect(() => {
-    let rafId: number;
-
     function tick() {
       const engine = AudioEngine.getInstance();
       const state = useAppStore.getState();
@@ -120,12 +118,11 @@ export function useAutoTransition() {
         }
       }
 
-      rafId = requestAnimationFrame(tick);
     }
 
-    rafId = requestAnimationFrame(tick);
+    const intervalId = setInterval(tick, 250);
     return () => {
-      cancelAnimationFrame(rafId);
+      clearInterval(intervalId);
       abortRef.current?.abort();
     };
   }, []);
