@@ -1,4 +1,4 @@
-import { detectBPM, generateBeatPositions } from './BPMDetector';
+import { detectBPM, detectBeatPhase, generateBeatPositions } from './BPMDetector';
 import { analyzeEnergy, type EnergySegment } from './EnergyAnalyzer';
 
 export interface AnalysisRequest {
@@ -41,7 +41,7 @@ ctx.onmessage = (e: MessageEvent<AnalysisRequest>) => {
 
   const bpm = detectBPM(channelData, sampleRate);
   const waveformData = generateWaveformData(channelData);
-  const beatPositions = generateBeatPositions(bpm, duration);
+  const beatPositions = generateBeatPositions(bpm, duration, detectBeatPhase(channelData, sampleRate, bpm));
   const energySegments = analyzeEnergy(channelData, sampleRate, duration, beatPositions);
 
   const result: AnalysisResult = { id, bpm, waveformData, beatPositions, energySegments };

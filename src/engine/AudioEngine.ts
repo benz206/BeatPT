@@ -223,7 +223,7 @@ export class AudioEngine {
     return pos;
   }
 
-  setPlaybackRate(deck: Deck, rate: number): void {
+  setPlaybackRate(deck: Deck, rate: number, rampTime = 0): void {
     const state = this.decks[deck];
     if (state.isPlaying && state.source) {
       // Rebase timing so position tracking stays correct across rate changes
@@ -232,7 +232,15 @@ export class AudioEngine {
     }
     this.playbackRates[deck] = rate;
     if (state.source) {
-      state.source.playbackRate.value = rate;
+      const param = state.source.playbackRate;
+      if (rampTime > 0) {
+        const now = this.ctx.currentTime;
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(param.value, now);
+        param.linearRampToValueAtTime(rate, now + rampTime);
+      } else {
+        param.value = rate;
+      }
     }
   }
 
@@ -279,7 +287,7 @@ export class AudioEngine {
     gain.linearRampToValueAtTime(Math.max(0, Math.min(1, value)), now + this.RAMP_TIME);
   }
 
-  setCrossfader(value: number): void {
+  setCrossfader(value: number, rampTime = this.RAMP_TIME): void {
     this.crossfaderValue = Math.max(-1, Math.min(1, value));
     const angle = ((this.crossfaderValue + 1) / 2) * (Math.PI / 2);
     const gainA = Math.cos(angle);
@@ -288,24 +296,24 @@ export class AudioEngine {
     const now = this.ctx.currentTime;
     this.crossfaderGainA.gain.cancelScheduledValues(now);
     this.crossfaderGainA.gain.setValueAtTime(this.crossfaderGainA.gain.value, now);
-    this.crossfaderGainA.gain.linearRampToValueAtTime(gainA, now + this.RAMP_TIME);
+    this.crossfaderGainA.gain.linearRampToValueAtTime(gainA, now + rampTime);
 
     this.crossfaderGainB.gain.cancelScheduledValues(now);
     this.crossfaderGainB.gain.setValueAtTime(this.crossfaderGainB.gain.value, now);
-    this.crossfaderGainB.gain.linearRampToValueAtTime(gainB, now + this.RAMP_TIME);
+    this.crossfaderGainB.gain.linearRampToValueAtTime(gainB, now + rampTime);
   }
 
   getCrossfaderValue(): number {
     return this.crossfaderValue;
   }
 
-  setEQ(deck: Deck, band: EQBand, value: number): void {
+  setEQ(deck: Deck, band: EQBand, value: number, rampTime = this.RAMP_TIME): void {
     const state = this.decks[deck];
     const node = band === 'low' ? state.eqLow : band === 'mid' ? state.eqMid : state.eqHigh;
     const now = this.ctx.currentTime;
     node.gain.cancelScheduledValues(now);
     node.gain.setValueAtTime(node.gain.value, now);
-    node.gain.linearRampToValueAtTime(Math.max(-12, Math.min(12, value)), now + this.RAMP_TIME);
+    node.gain.linearRampToValueAtTime(Math.max(-12, Math.min(12, value)), now + rampTime);
   }
 
   getEQ(deck: Deck, band: EQBand): number {

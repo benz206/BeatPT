@@ -1,10 +1,48 @@
-export function generateBeatPositions(bpm: number, duration: number): number[] {
+export function generateBeatPositions(bpm: number, duration: number, phase = 0): number[] {
   const interval = 60 / bpm;
   const positions: number[] = [];
-  for (let t = 0; t < duration; t += interval) {
+  for (let t = phase; t < duration; t += interval) {
     positions.push(t);
   }
   return positions;
+}
+
+// Find the grid offset (0..one beat, in seconds) that best lines up with onsets,
+// so generated beat positions land on actual beats instead of being anchored at t=0.
+export function detectBeatPhase(channelData: Float32Array, sampleRate: number, bpm: number): number {
+  const step = Math.floor(sampleRate / 200);
+  const envRate = sampleRate / step;
+
+  const env: number[] = [];
+  for (let i = 0; i < channelData.length; i += step) {
+    env.push(Math.abs(channelData[i]));
+  }
+
+  // Onset strength: positive energy increase emphasizes beat attacks
+  const onsets: number[] = [0];
+  for (let i = 1; i < env.length; i++) {
+    onsets.push(Math.max(0, env[i] - env[i - 1]));
+  }
+
+  const beatLen = (60 / bpm) * envRate;
+  const limit = Math.min(onsets.length, Math.floor(envRate * 90));
+  const nOffsets = 48;
+
+  let bestOffset = 0;
+  let bestScore = -1;
+  for (let k = 0; k < nOffsets; k++) {
+    const offset = (k / nOffsets) * beatLen;
+    let score = 0;
+    for (let p = offset; p < limit; p += beatLen) {
+      score += onsets[Math.round(p)] ?? 0;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestOffset = offset;
+    }
+  }
+
+  return bestOffset / envRate;
 }
 
 export function detectBPM(channelData: Float32Array, sampleRate: number): number {

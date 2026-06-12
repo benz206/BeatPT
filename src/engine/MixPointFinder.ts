@@ -15,7 +15,7 @@ export function findBestMixPoint(
   const latestStart = trackDuration - transitionDuration - 2;
   if (latestStart <= 0) return null;
 
-  const windowStart = Math.max(0, latestStart - 10);
+  const windowStart = Math.max(0, latestStart - 30);
 
   const candidates = energySegments.filter(
     (s) => s.startTime >= windowStart && s.startTime <= latestStart
@@ -41,4 +41,15 @@ export function findBestMixPoint(
   }
 
   return { triggerTime: best.startTime, segmentType: best.type, confidence: bestScore };
+}
+
+// Where to start the incoming track: skip a quiet intro and drop in at the first
+// energetic section, as long as that leaves enough of the track to play out.
+export function findMixInPoint(energySegments: EnergySegment[], trackDuration: number): number {
+  for (const seg of energySegments) {
+    if (seg.type !== 'low') {
+      return trackDuration - seg.startTime > 60 ? seg.startTime : 0;
+    }
+  }
+  return 0;
 }

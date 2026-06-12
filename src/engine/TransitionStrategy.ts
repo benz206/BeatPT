@@ -11,12 +11,21 @@ export interface TransitionPlan {
 
 export function classifyBPMRelationship(fromBPM: number, toBPM: number): BPMRelationship {
   const ratio = Math.max(fromBPM, toBPM) / Math.min(fromBPM, toBPM);
-  if (ratio >= 1.9 && ratio <= 2.1) return 'half-double';
-  const gap = Math.abs(fromBPM - toBPM);
-  if (gap < 5) return 'same';
-  if (gap < 15) return 'small-gap';
+  if (ratio >= 1.8 && ratio <= 2.2) return 'half-double';
+  // Classify by the pitch adjustment a tempo match would need, not absolute BPM gap
+  if (ratio <= 1.04) return 'same';
+  if (ratio <= 1.1) return 'small-gap';
   return 'large-gap';
 }
+
+// Crossfade length per transition type, in beats of the outgoing track
+export const FADE_BEATS: Record<TransitionType, number> = {
+  'long-blend': 32,
+  'tempo-ramp': 24,
+  'filter-sweep': 24,
+  'breakdown-bridge': 12,
+  'echo-drop': 4,
+};
 
 const DESCRIPTIONS: Record<TransitionType, (from: number, to: number) => string> = {
   'long-blend':        (f, t) => `Long Blend — syncing ${Math.round(f)}→${Math.round(t)} BPM`,
@@ -34,26 +43,22 @@ export function selectTransition(
   const bpmGap = Math.abs(fromTrack.bpm - toTrack.bpm);
 
   let type: TransitionType;
-  let estimatedDuration: number;
 
   switch (relationship) {
     case 'same':
+    case 'half-double':
       type = 'long-blend';
-      estimatedDuration = 26;
       break;
     case 'small-gap':
       type = Math.random() < 0.5 ? 'tempo-ramp' : 'filter-sweep';
-      estimatedDuration = 26;
       break;
     case 'large-gap':
       type = Math.random() < 0.5 ? 'echo-drop' : 'breakdown-bridge';
-      estimatedDuration = 26;
-      break;
-    case 'half-double':
-      type = 'long-blend';
-      estimatedDuration = 26;
       break;
   }
+
+  const beat = 60 / fromTrack.bpm;
+  const estimatedDuration = FADE_BEATS[type] * beat + (type === 'echo-drop' ? 4 : 2);
 
   return {
     type,
