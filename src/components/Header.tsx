@@ -7,6 +7,26 @@ function formatElapsed(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+async function saveBlob(blob: Blob, filename: string): Promise<void> {
+  // WKWebView doesn't honor anchor downloads, so use the native save dialog in Tauri
+  if ('__TAURI_INTERNALS__' in window) {
+    const { save } = await import('@tauri-apps/plugin-dialog');
+    const { writeFile } = await import('@tauri-apps/plugin-fs');
+    const path = await save({ defaultPath: filename });
+    if (path) {
+      await writeFile(path, new Uint8Array(await blob.arrayBuffer()));
+    }
+    return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 export function Header() {
   const [isRecording, setIsRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -28,12 +48,8 @@ export function Header() {
       setIsRecording(false);
       const blob = await engine.stopRecording();
       const ext = blob.type.includes('mp4') ? 'm4a' : 'webm';
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `beatpt-mix-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      const filename = `beatpt-mix-${new Date().toISOString().replace(/[:.]/g, '-')}.${ext}`;
+      await saveBlob(blob, filename);
     }
   };
 
