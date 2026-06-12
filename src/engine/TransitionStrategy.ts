@@ -1,3 +1,6 @@
+import { TrackKey } from './KeyDetector';
+import { keyCompatibility } from './KeyDetector';
+
 export type BPMRelationship = 'same' | 'small-gap' | 'large-gap' | 'half-double';
 export type TransitionType = 'long-blend' | 'tempo-ramp' | 'filter-sweep' | 'echo-drop' | 'breakdown-bridge';
 
@@ -36,21 +39,26 @@ const DESCRIPTIONS: Record<TransitionType, (from: number, to: number) => string>
 };
 
 export function selectTransition(
-  fromTrack: { bpm: number },
-  toTrack: { bpm: number },
+  fromTrack: { bpm: number; key?: TrackKey | null },
+  toTrack: { bpm: number; key?: TrackKey | null },
 ): TransitionPlan {
   const relationship = classifyBPMRelationship(fromTrack.bpm, toTrack.bpm);
   const bpmGap = Math.abs(fromTrack.bpm - toTrack.bpm);
+  const compat = keyCompatibility(fromTrack.key, toTrack.key);
 
   let type: TransitionType;
 
   switch (relationship) {
     case 'same':
     case 'half-double':
-      type = 'long-blend';
+      type = compat >= 0.5 ? 'long-blend' : 'filter-sweep';
       break;
     case 'small-gap':
-      type = Math.random() < 0.5 ? 'tempo-ramp' : 'filter-sweep';
+      if (compat >= 0.5) {
+        type = Math.random() < 0.5 ? 'tempo-ramp' : 'filter-sweep';
+      } else {
+        type = Math.random() < 0.7 ? 'filter-sweep' : 'echo-drop';
+      }
       break;
     case 'large-gap':
       type = Math.random() < 0.5 ? 'echo-drop' : 'breakdown-bridge';
@@ -60,11 +68,21 @@ export function selectTransition(
   const beat = 60 / fromTrack.bpm;
   const estimatedDuration = FADE_BEATS[type] * beat + (type === 'echo-drop' ? 4 : 2);
 
+  const baseDescription = DESCRIPTIONS[type](fromTrack.bpm, toTrack.bpm);
+  const bothKeysPresent = fromTrack.key != null && toTrack.key != null;
+  const keySuffix = bothKeysPresent
+    ? compat >= 0.9
+      ? ' · in key'
+      : compat < 0.5
+        ? ' · key clash'
+        : ''
+    : '';
+
   return {
     type,
     relationship,
     bpmGap,
     estimatedDuration,
-    description: DESCRIPTIONS[type](fromTrack.bpm, toTrack.bpm),
+    description: baseDescription + keySuffix,
   };
 }

@@ -8,6 +8,7 @@ export interface TransitionTrack {
   bpm: number;
   duration: number;
   beatPositions: number[];
+  downbeatIndex: number;
   energySegments: EnergySegment[];
 }
 
@@ -45,6 +46,15 @@ function ramp(signal: AbortSignal, durationS: number, onStep: (t: number) => voi
   });
 }
 
+// Abortable wait that resolves after durationS or as soon as the signal fires.
+function sleep(signal: AbortSignal, durationS: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (durationS <= 0) { resolve(); return; }
+    const id = setTimeout(resolve, durationS * 1000);
+    signal.addEventListener('abort', () => { clearTimeout(id); resolve(); }, { once: true });
+  });
+}
+
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
@@ -66,41 +76,120 @@ function computeMatchRate(fromBPM: number, fromSpeed: number, toBPM: number): nu
   return Math.max(0.5, Math.min(2, best));
 }
 
-function gridPhase(track: TransitionTrack): number {
-  const beat = 60 / track.bpm;
-  return track.beatPositions.length ? track.beatPositions[0] % beat : 0;
+// Average beat interval, used to extrapolate past the ends of the tracked grid.
+function avgBeat(track: TransitionTrack): number {
+  return 60 / track.bpm;
 }
 
-// Wall-clock seconds until the deck's next beat
-function timeToNextBeat(track: TransitionTrack, position: number, rate: number): number {
-  const beat = 60 / track.bpm;
-  const phase = gridPhase(track);
-  let dt = phase + Math.ceil((position - phase) / beat) * beat - position;
-  if (dt < 0.02) dt += beat;
-  return dt / rate;
+// Index of the first beat at or after `position`, via binary search. Returns
+// beatPositions.length when `position` is past the last tracked beat.
+function beatIndexAtOrAfter(beats: number[], position: number): number {
+  let lo = 0;
+  let hi = beats.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (beats[mid] < position) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
-function snapToBeat(track: TransitionTrack, position: number): number {
-  const beat = 60 / track.bpm;
-  const phase = gridPhase(track);
-  return Math.max(0, phase + Math.round((position - phase) / beat) * beat);
+// Time of the last beat at or before `position`. Beyond the array ends the grid
+// is extrapolated with the average beat interval.
+function beatBefore(track: TransitionTrack, position: number): number {
+  const beats = track.beatPositions;
+  if (beats.length === 0) return position;
+  const i = beatIndexAtOrAfter(beats, position);
+  if (i === 0) {
+    const dt = beats[0] - position;
+    return beats[0] - Math.ceil(dt / avgBeat(track)) * avgBeat(track);
+  }
+  if (beats[i] === position) return position;
+  if (i >= beats.length) {
+    const last = beats[beats.length - 1];
+    return last + Math.floor((position - last) / avgBeat(track)) * avgBeat(track);
+  }
+  return beats[i - 1];
 }
 
-// Start the incoming deck at its mix-in point, offset so that its beat grid
-// lands in phase with the outgoing deck's next beat.
-function startIncomingAligned(ctx: TransitionContext, rate: number): void {
+// Time of the first beat strictly after `position`. Extrapolated past the ends.
+function beatAfter(track: TransitionTrack, position: number): number {
+  const beats = track.beatPositions;
+  if (beats.length === 0) return position + avgBeat(track);
+  const i = beatIndexAtOrAfter(beats, position);
+  if (i < beats.length && beats[i] > position) return beats[i];
+  if (i >= beats.length) {
+    const last = beats[beats.length - 1];
+    return last + (Math.floor((position - last) / avgBeat(track)) + 1) * avgBeat(track);
+  }
+  // beats[i] === position: take the next one (extrapolating if it's the last)
+  if (i + 1 < beats.length) return beats[i + 1];
+  return beats[i] + avgBeat(track);
+}
+
+// Time of the next bar boundary: a beat whose array index ≡ downbeatIndex (mod 4)
+// and that lands more than 50 ms ahead. Falls back to the next beat when there
+// aren't enough tracked beats to know where bars sit.
+function nextBarTime(track: TransitionTrack, position: number): number {
+  const beats = track.beatPositions;
+  if (beats.length < 4) return beatAfter(track, position);
+  const target = ((track.downbeatIndex % 4) + 4) % 4;
+  const start = beatIndexAtOrAfter(beats, position + 0.05);
+  for (let i = start; i < beats.length; i++) {
+    if (i % 4 === target && beats[i] > position + 0.05) return beats[i];
+  }
+  // Past the last bar: extrapolate one bar at a time from the last bar beat.
+  let lastBar = -1;
+  for (let i = beats.length - 1; i >= 0; i--) {
+    if (i % 4 === target) { lastBar = beats[i]; break; }
+  }
+  if (lastBar < 0) return beatAfter(track, position);
+  const bar = 4 * avgBeat(track);
+  return lastBar + (Math.floor((position + 0.05 - lastBar) / bar) + 1) * bar;
+}
+
+// Map a phase difference to [-0.5, 0.5) so corrections always take the short way.
+function wrapPhase(e: number): number {
+  return e - Math.round(e);
+}
+
+// Continuous beat coordinate (beat index + intra-beat fraction) at a position,
+// extrapolated past the tracked grid with the average interval. Comparing these
+// (scaled by the tempo multiple) keeps phase error well-defined even when the
+// decks are matched at half/double time.
+function continuousBeatAt(track: TransitionTrack, position: number): number {
+  const beats = track.beatPositions;
+  if (beats.length === 0) return position / avgBeat(track);
+  const prev = beatBefore(track, position);
+  const next = beatAfter(track, position);
+  const span = next - prev;
+  const frac = span > 0 ? (position - prev) / span : 0;
+  let idx: number;
+  if (prev < beats[0]) {
+    idx = Math.round((prev - beats[0]) / avgBeat(track));
+  } else if (prev > beats[beats.length - 1]) {
+    idx = beats.length - 1 + Math.round((prev - beats[beats.length - 1]) / avgBeat(track));
+  } else {
+    idx = beatIndexAtOrAfter(beats, prev);
+  }
+  return idx + frac;
+}
+
+// Start the incoming deck at its phrase-aligned mix-in point, scheduled on the
+// AudioContext clock so it lands exactly on the outgoing deck's next bar (or beat
+// for the snappy echo cut). Returns the wall-clock delay until it sounds.
+function scheduleIncoming(ctx: TransitionContext, rate: number, alignToBar: boolean): number {
   const { engine, fromDeck, toDeck, fromTrack, toTrack, fromSpeed } = ctx;
 
-  const mixIn = snapToBeat(toTrack, findMixInPoint(toTrack.energySegments, toTrack.duration));
-  const dt = timeToNextBeat(fromTrack, engine.getPlaybackPosition(fromDeck), fromSpeed);
-  let offset = mixIn - dt * rate;
-  const beat = 60 / toTrack.bpm;
-  while (offset < 0) offset += beat;
+  const mixIn = findMixInPoint(toTrack);
+  const fromPos = engine.getPlaybackPosition(fromDeck);
+  const target = alignToBar ? nextBarTime(fromTrack, fromPos) : beatAfter(fromTrack, fromPos);
+  const dtWall = Math.max(0, (target - fromPos) / fromSpeed);
 
   engine.setPlaybackRate(toDeck, rate);
-  engine.seek(toDeck, offset);
-  engine.play(toDeck);
-  ctx.updateDeck(toDeck, { isPlaying: true, currentTime: offset, speed: rate });
+  engine.playAt(toDeck, mixIn, engine.getContext().currentTime + dtWall);
+  ctx.updateDeck(toDeck, { isPlaying: true, currentTime: mixIn, speed: rate });
+  return dtWall;
 }
 
 // Move the crossfader fully onto the outgoing deck before the new track starts
@@ -146,6 +235,7 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   const rate = opts.tempoMatch ? computeMatchRate(fromTrack.bpm, fromSpeed, toTrack.bpm) : toSpeed;
   const wallBeat = 60 / (fromTrack.bpm * fromSpeed);
   const fadeS = Math.min(24, Math.max(5, FADE_BEATS[ctx.plan.type] * wallBeat));
+  const tempoRamp = ctx.plan.type === 'tempo-ramp';
 
   const savedFromLow = engine.getEQ(fromDeck, 'low');
   const savedFromMid = engine.getEQ(fromDeck, 'mid');
@@ -154,18 +244,55 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   const savedToMid = engine.getEQ(toDeck, 'mid');
   const savedToHigh = engine.getEQ(toDeck, 'high');
 
+  // Single idempotent teardown: restore both decks' EQs and leave the rates sane.
+  // `withRate` is false when the caller already brought toDeck to toSpeed itself.
+  let restored = false;
+  const restore = (withRate: boolean): void => {
+    if (restored) return;
+    restored = true;
+    engine.setEQ(fromDeck, 'low', savedFromLow, 0.25);
+    engine.setEQ(fromDeck, 'mid', savedFromMid, 0.25);
+    engine.setEQ(fromDeck, 'high', savedFromHigh, 0.25);
+    engine.setEQ(toDeck, 'low', savedToLow, 0.25);
+    engine.setEQ(toDeck, 'mid', savedToMid, 0.25);
+    engine.setEQ(toDeck, 'high', savedToHigh, 0.25);
+    if (withRate) {
+      if (Math.abs(engine.getPlaybackRate(toDeck) - toSpeed) > 0.002) {
+        engine.setPlaybackRate(toDeck, toSpeed, 2);
+      }
+      engine.setPlaybackRate(fromDeck, fromSpeed);
+      ctx.updateDeck(toDeck, { speed: toSpeed });
+    }
+  };
+
   const fromSide = fromDeck === 'A' ? -1 : 1;
   const toSide = -fromSide;
   await parkCrossfader(ctx, signal, fromSide);
-  if (signal.aborted) return;
+  if (signal.aborted) { restore(true); return; }
 
   // Incoming starts beat-aligned and tempo-matched, with its bass out of the
   // way and its mids/highs pulled back so it eases in rather than slamming in
   engine.setEQ(toDeck, 'low', -12);
   engine.setEQ(toDeck, 'mid', Math.max(-12, savedToMid - opts.inMidCut));
   engine.setEQ(toDeck, 'high', Math.max(-12, savedToHigh - opts.inHighCut));
-  startIncomingAligned(ctx, rate);
+  const dtWall = scheduleIncoming(ctx, rate, true);
   ctx.onProgress(86, 'Beatmatched...');
+
+  // Hold the fade until the scheduled incoming deck actually sounds.
+  await sleep(signal, dtWall);
+  if (signal.aborted) { restore(true); return; }
+
+  // For tempo-ramp the matched start rate glides to the incoming track's own
+  // tempo across the fade; every other type holds a constant matched rate.
+  const rate0 = rate;
+  const baseRate = (t: number): number =>
+    tempoRamp ? rate0 + (toSpeed - rate0) * smoothstep(t) : rate;
+
+  // Tempo multiple the match chose (0.5/1/2): scales the incoming deck's beat
+  // count so half/double-time blends compare like-for-like beats.
+  const nominalMult = (fromTrack.bpm * fromSpeed) / (toTrack.bpm * rate);
+  const syncMult = [0.5, 1, 2].reduce((a, b) =>
+    Math.abs(Math.log(nominalMult / b)) < Math.abs(Math.log(nominalMult / a)) ? b : a);
 
   await ramp(signal, fadeS, (t) => {
     const pos = fromSide + (toSide - fromSide) * smoothstep(t);
@@ -192,28 +319,56 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
       engine.setEQ(fromDeck, 'high', savedFromHigh - outT * opts.outHighDrop, TICK_S);
     }
 
+    const target = baseRate(t);
+    if (tempoRamp) {
+      // Glide the outgoing deck with the incoming one so they stay matched while
+      // the matched tempo bends toward the incoming track's own tempo.
+      engine.setPlaybackRate(fromDeck, fromSpeed * target / rate0, TICK_S);
+      engine.setPlaybackRate(toDeck, target, TICK_S);
+    } else if (opts.tempoMatch) {
+      // Phase-lock: ride the incoming pitch by up to ±0.4% to pull its beat grid
+      // back into alignment with the outgoing deck's.
+      const phaseErr = wrapPhase(
+        continuousBeatAt(fromTrack, engine.getPlaybackPosition(fromDeck)) -
+        continuousBeatAt(toTrack, engine.getPlaybackPosition(toDeck)) * syncMult
+      );
+      const correction = Math.max(-0.004, Math.min(0.004, 0.08 * phaseErr));
+      engine.setPlaybackRate(toDeck, target * (1 + correction), TICK_S);
+    }
+
     ctx.onProgress(Math.round(86 + t * 9), 'Blending...');
   });
-  if (signal.aborted) return;
+  if (signal.aborted) { restore(true); return; }
 
   engine.stop(fromDeck);
   ctx.updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
-  engine.setEQ(fromDeck, 'low', savedFromLow);
-  engine.setEQ(fromDeck, 'mid', savedFromMid);
-  engine.setEQ(fromDeck, 'high', savedFromHigh);
-  engine.setEQ(toDeck, 'low', savedToLow);
-  engine.setEQ(toDeck, 'mid', savedToMid);
-  engine.setEQ(toDeck, 'high', savedToHigh);
 
-  // Ease the new track back to its own tempo, slowly enough not to hear the bend
-  if (Math.abs(rate - toSpeed) > 0.002) {
-    await ramp(signal, 12, (t) => {
-      engine.setPlaybackRate(toDeck, rate + (toSpeed - rate) * smoothstep(t), TICK_S);
-    });
-    if (signal.aborted) return;
+  if (tempoRamp) {
+    // The incoming deck has already glided to ~toSpeed; snap off any residual
+    // sync correction and reset the stopped outgoing deck. No post-blend ease.
     engine.setPlaybackRate(toDeck, toSpeed);
+    engine.setPlaybackRate(fromDeck, fromSpeed);
+    restore(false);
+    ctx.updateDeck(toDeck, { speed: toSpeed });
+  } else if (Math.abs(engine.getPlaybackRate(toDeck) - toSpeed) > 0.002) {
+    // Ease the new track back to its own tempo, slowly enough not to hear the
+    // bend. Start from where phase-locking left the rate, not the nominal match.
+    const from = engine.getPlaybackRate(toDeck);
+    await ramp(signal, 12, (t) => {
+      engine.setPlaybackRate(toDeck, from + (toSpeed - from) * smoothstep(t), TICK_S);
+    });
+    if (signal.aborted) { restore(true); return; }
+    engine.setPlaybackRate(toDeck, toSpeed);
+    engine.setPlaybackRate(fromDeck, fromSpeed);
+    restore(false);
+    ctx.updateDeck(toDeck, { speed: toSpeed });
+  } else {
+    // Within tolerance of toSpeed already — snap off any residual sync correction.
+    engine.setPlaybackRate(toDeck, toSpeed);
+    engine.setPlaybackRate(fromDeck, fromSpeed);
+    restore(false);
+    ctx.updateDeck(toDeck, { speed: toSpeed });
   }
-  ctx.updateDeck(toDeck, { speed: toSpeed });
   ctx.onComplete();
 }
 
@@ -236,8 +391,13 @@ async function runEchoCut(ctx: TransitionContext, signal: AbortSignal): Promise<
   echo.apply(engine.getDeckOutputNode(fromDeck), fromTrack.bpm, engine.getContext());
   signal.addEventListener('abort', () => echo.remove(), { once: true });
 
-  startIncomingAligned(ctx, toSpeed);
+  // Snappy cut: align to the next beat, not the next bar.
+  const dtWall = scheduleIncoming(ctx, toSpeed, false);
   ctx.onProgress(88, 'Echo out...');
+
+  // Start the fade exactly when the incoming deck sounds.
+  await sleep(signal, dtWall);
+  if (signal.aborted) return;
 
   await ramp(signal, fadeS, (t) => {
     const pos = fromSide + (toSide - fromSide) * smoothstep(t);

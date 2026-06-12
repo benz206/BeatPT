@@ -51,8 +51,7 @@ export function useAutoTransition() {
 
           if (!mixPointRef.current) {
             const point = findBestMixPoint(
-              deckState.track.energySegments,
-              deckState.track.duration,
+              deckState.track,
               plan.estimatedDuration,
               plan.type === 'echo-drop',
             );
