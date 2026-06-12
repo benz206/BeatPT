@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/useAppStore';
 import { selectTransition } from '../engine/TransitionStrategy';
 import { findBestMixPoint, MixPoint } from '../engine/MixPointFinder';
 import { executeTransition } from '../engine/TransitionExecutor';
+import { pickNextTrack } from '../engine/TrackSelector';
 
 const TRANSITION_ICONS: Record<string, string> = {
   'long-blend': '🎶',
@@ -19,6 +20,7 @@ export function useAutoTransition() {
   const mixPointRef = useRef<MixPoint | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const planCacheRef = useRef<{ deckId: string; plan: ReturnType<typeof selectTransition> } | null>(null);
+  const autoQueuedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     function tick() {
@@ -33,11 +35,29 @@ export function useAutoTransition() {
           const otherState = otherDeck === 'A' ? state.deckA : state.deckB;
 
           if (!engine.isPlaying(deckId) || !deckState.track) continue;
-          if (!otherState.track) continue;
           if (engine.isPlaying(otherDeck)) continue;
 
           const position = engine.getPlaybackPosition(deckId);
           const remaining = deckState.track.duration - position;
+
+          // AI track pick: when the idle deck is empty, queue the most
+          // compatible library track before the mix-out point approaches.
+          if (!otherState.track) {
+            if (remaining < 90 && autoQueuedForRef.current !== deckState.track.id) {
+              const next = pickNextTrack(deckState.track, state.library);
+              if (next?.audioBuffer) {
+                autoQueuedForRef.current = deckState.track.id;
+                engine.loadTrack(otherDeck, next.audioBuffer, next.gain);
+                state.loadTrackToDeck(otherDeck, next);
+                state.addAction({
+                  name: 'AI Track Pick',
+                  icon: '🤖',
+                  description: `Queued "${next.name}" (${Math.round(next.bpm)} BPM${next.key ? ` · ${next.key.camelot}` : ''})`,
+                });
+              }
+            }
+            continue;
+          }
 
           if (!planCacheRef.current || planCacheRef.current.deckId !== deckId) {
             planCacheRef.current = {

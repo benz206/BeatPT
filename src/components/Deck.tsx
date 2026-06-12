@@ -49,9 +49,14 @@ export function Deck({ deckId }: DeckProps) {
             Deck {deckId}
           </Label>
           {track && (
-            <Badge accent={isA ? 'default' : 'blue'}>
-              {effectiveBpm} BPM
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge accent={isA ? 'default' : 'blue'}>
+                {effectiveBpm} BPM
+              </Badge>
+              {track.key && (
+                <span className="text-[11px] font-mono text-accent-2" title={track.key.name}>{track.key.camelot}</span>
+              )}
+            </div>
           )}
         </div>
 

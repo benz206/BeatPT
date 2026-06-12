@@ -88,6 +88,9 @@ export function TrackLibrary() {
                       <p className="text-[11px] text-text-secondary truncate">{track.artist}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[11px] font-mono text-accent">{Math.round(track.bpm)} BPM</span>
+                        {track.key && (
+                          <span className="text-[11px] font-mono text-accent-2" title={track.key.name}>{track.key.camelot}</span>
+                        )}
                         <span className="text-[11px] text-text-muted">{formatDuration(track.duration)}</span>
                       </div>
                     </div>
