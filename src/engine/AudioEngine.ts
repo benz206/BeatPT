@@ -4,6 +4,7 @@ type EQBand = 'low' | 'mid' | 'high';
 interface DeckState {
   source: AudioBufferSourceNode | null;
   buffer: AudioBuffer | null;
+  trimGain: GainNode;
   gainNode: GainNode;
   eqLow: BiquadFilterNode;
   eqMid: BiquadFilterNode;
@@ -65,6 +66,9 @@ export class AudioEngine {
   }
 
   private createDeckState(destination: AudioNode): DeckState {
+    const trimGain = this.ctx.createGain();
+    trimGain.gain.value = 1;
+
     const gainNode = this.ctx.createGain();
     gainNode.gain.value = 1;
 
@@ -84,6 +88,7 @@ export class AudioEngine {
     const analyser = this.ctx.createAnalyser();
     analyser.fftSize = 2048;
 
+    trimGain.connect(gainNode);
     gainNode.connect(eqLow);
     eqLow.connect(eqMid);
     eqMid.connect(eqHigh);
@@ -93,6 +98,7 @@ export class AudioEngine {
     return {
       source: null,
       buffer: null,
+      trimGain,
       gainNode,
       eqLow,
       eqMid,
@@ -112,13 +118,14 @@ export class AudioEngine {
     return this.ctx.decodeAudioData(arrayBuffer);
   }
 
-  loadTrack(deck: Deck, audioBuffer: AudioBuffer): void {
+  loadTrack(deck: Deck, audioBuffer: AudioBuffer, trim = 1): void {
     const state = this.decks[deck];
     if (state.isPlaying) {
       this.stop(deck);
     }
     state.buffer = audioBuffer;
     state.pauseOffset = 0;
+    state.trimGain.gain.value = Math.max(0, Math.min(2, trim));
     this.playbackRates[deck] = 1;
     this.loops[deck] = null;
   }
@@ -140,7 +147,7 @@ export class AudioEngine {
       source.loopStart = loop.start;
       source.loopEnd = loop.end;
     }
-    source.connect(state.gainNode);
+    source.connect(state.trimGain);
     source.start(0, state.pauseOffset);
     source.onended = () => {
       if (state.isPlaying) {
@@ -151,6 +158,52 @@ export class AudioEngine {
 
     state.source = source;
     state.startTime = this.ctx.currentTime;
+    state.isPlaying = true;
+  }
+
+  playAt(deck: Deck, offset: number, when: number): void {
+    const state = this.decks[deck];
+    if (!state.buffer) return;
+
+    if (state.source) {
+      state.source.onended = null;
+      try {
+        state.source.stop();
+      } catch (_) {
+        // already stopped
+      }
+      state.source = null;
+      state.isPlaying = false;
+    }
+
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+
+    const clampedOffset = Math.max(0, Math.min(offset, state.buffer.duration));
+    const startAt = Math.max(when, this.ctx.currentTime);
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = state.buffer;
+    source.playbackRate.value = this.playbackRates[deck];
+    const loop = this.loops[deck];
+    if (loop) {
+      source.loop = true;
+      source.loopStart = loop.start;
+      source.loopEnd = loop.end;
+    }
+    source.connect(state.trimGain);
+    source.start(startAt, clampedOffset);
+    source.onended = () => {
+      if (state.isPlaying) {
+        state.isPlaying = false;
+        state.pauseOffset = 0;
+      }
+    };
+
+    state.source = source;
+    state.pauseOffset = clampedOffset;
+    state.startTime = startAt;
     state.isPlaying = true;
   }
 
@@ -213,7 +266,7 @@ export class AudioEngine {
     const state = this.decks[deck];
     let pos = state.pauseOffset;
     if (state.isPlaying) {
-      const elapsed = this.ctx.currentTime - state.startTime;
+      const elapsed = Math.max(0, this.ctx.currentTime - state.startTime);
       pos += elapsed * this.playbackRates[deck];
     }
     const loop = this.loops[deck];
@@ -221,6 +274,10 @@ export class AudioEngine {
       pos = loop.start + ((pos - loop.start) % (loop.end - loop.start));
     }
     return pos;
+  }
+
+  getPlaybackRate(deck: Deck): number {
+    return this.playbackRates[deck];
   }
 
   setPlaybackRate(deck: Deck, rate: number, rampTime = 0): void {
@@ -277,6 +334,14 @@ export class AudioEngine {
 
   getLoop(deck: Deck): { start: number; end: number } | null {
     return this.loops[deck];
+  }
+
+  setTrimGain(deck: Deck, value: number): void {
+    const gain = this.decks[deck].trimGain.gain;
+    const now = this.ctx.currentTime;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    gain.linearRampToValueAtTime(Math.max(0, Math.min(2, value)), now + this.RAMP_TIME);
   }
 
   setVolume(deck: Deck, value: number): void {
