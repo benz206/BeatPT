@@ -7,10 +7,7 @@ export function generateBeatPositions(bpm: number, duration: number): number[] {
   return positions;
 }
 
-export function detectBPM(audioBuffer: AudioBuffer): number {
-  const sampleRate = audioBuffer.sampleRate;
-  const channelData = audioBuffer.getChannelData(0);
-
+export function detectBPM(channelData: Float32Array, sampleRate: number): number {
   // Downsample to reduce computation — process every Nth sample
   const step = Math.floor(sampleRate / 200);
   const downsampled: number[] = [];

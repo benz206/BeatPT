@@ -1,41 +1,10 @@
 import { useRef, useCallback } from 'react';
 import { AudioEngine } from '../engine/AudioEngine';
-import { detectBPM, generateBeatPositions } from '../engine/BPMDetector';
-import { analyzeEnergy } from '../engine/EnergyAnalyzer';
-import { parseMetadata } from '../engine/MetadataParser';
+import { analyzeTrackFile } from '../engine/TrackAnalyzer';
 import { useAppStore } from '../stores/useAppStore';
-import type { Track } from '../stores/useAppStore';
 
 type Deck = 'A' | 'B';
 type EQBand = 'low' | 'mid' | 'high';
-
-function generateWaveformData(audioBuffer: AudioBuffer, points = 200): number[] {
-  const channelData = audioBuffer.getChannelData(0);
-  const blockSize = Math.floor(channelData.length / points);
-  const waveform: number[] = [];
-
-  for (let i = 0; i < points; i++) {
-    let peak = 0;
-    const start = i * blockSize;
-    const end = Math.min(start + blockSize, channelData.length);
-    for (let j = start; j < end; j++) {
-      const abs = Math.abs(channelData[j]);
-      if (abs > peak) peak = abs;
-    }
-    waveform.push(peak);
-  }
-
-  return waveform;
-}
-
-function fileToArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as ArrayBuffer);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsArrayBuffer(file);
-  });
-}
 
 export function useAudioEngine() {
   const engineRef = useRef<AudioEngine>(AudioEngine.getInstance());
@@ -47,35 +16,9 @@ export function useAudioEngine() {
 
   const loadTrack = useCallback(
     async (deck: Deck, file: File) => {
-      const engine = engineRef.current;
-
-      const arrayBuffer = await fileToArrayBuffer(file);
-      const metadata = parseMetadata(arrayBuffer);
-      const audioBuffer = await engine.decodeAudioFile(arrayBuffer);
-      const bpm = detectBPM(audioBuffer);
-      const waveformData = generateWaveformData(audioBuffer);
-      const beatPositions = generateBeatPositions(bpm, audioBuffer.duration);
-      const energySegments = analyzeEnergy(audioBuffer, beatPositions);
-
-      const id = `${file.name}-${file.size}`;
-      const name = metadata.title || file.name.replace(/\.[^/.]+$/, '');
-
-      const track: Track = {
-        id,
-        name,
-        artist: metadata.artist || 'Unknown Artist',
-        duration: audioBuffer.duration,
-        bpm,
-        filePath: file.name,
-        audioBuffer,
-        waveformData,
-        beatPositions,
-        energySegments,
-        albumArt: metadata.albumArt,
-      };
-
+      const track = await analyzeTrackFile(file);
       addTrack(track);
-      engine.loadTrack(deck, audioBuffer);
+      engineRef.current.loadTrack(deck, track.audioBuffer!);
       loadTrackToDeck(deck, track);
     },
     [addTrack, loadTrackToDeck]

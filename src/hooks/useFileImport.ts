@@ -1,29 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useAppStore } from '../stores/useAppStore';
-import type { Track } from '../stores/useAppStore';
-import { detectBPM, generateBeatPositions } from '../engine/BPMDetector';
-import { AudioEngine } from '../engine/AudioEngine';
-import { parseMetadata } from '../engine/MetadataParser';
-import { analyzeEnergy } from '../engine/EnergyAnalyzer';
-
-function generateWaveformData(audioBuffer: AudioBuffer, points = 200): number[] {
-  const channelData = audioBuffer.getChannelData(0);
-  const blockSize = Math.floor(channelData.length / points);
-  const waveform: number[] = [];
-
-  for (let i = 0; i < points; i++) {
-    let peak = 0;
-    const start = i * blockSize;
-    const end = Math.min(start + blockSize, channelData.length);
-    for (let j = start; j < end; j++) {
-      const abs = Math.abs(channelData[j]);
-      if (abs > peak) peak = abs;
-    }
-    waveform.push(peak);
-  }
-
-  return waveform;
-}
+import { analyzeTrackFile } from '../engine/TrackAnalyzer';
 
 export function useFileImport() {
   const [isImporting, setIsImporting] = useState(false);
@@ -44,33 +21,7 @@ export function useFileImport() {
   }
 
   async function processFile(file: File): Promise<void> {
-    const engine = AudioEngine.getInstance();
-
-    const arrayBuffer = await file.arrayBuffer();
-    const metadata = parseMetadata(arrayBuffer);
-    const audioBuffer = await engine.decodeAudioFile(arrayBuffer);
-    const bpm = detectBPM(audioBuffer);
-    const waveformData = generateWaveformData(audioBuffer);
-    const beatPositions = generateBeatPositions(bpm, audioBuffer.duration);
-    const energySegments = analyzeEnergy(audioBuffer, beatPositions);
-
-    const id = `${file.name}-${file.size}`;
-    const name = metadata.title || file.name.replace(/\.[^/.]+$/, '');
-
-    const track: Track = {
-      id,
-      name,
-      artist: metadata.artist || 'Unknown Artist',
-      duration: audioBuffer.duration,
-      bpm,
-      filePath: file.name,
-      audioBuffer,
-      waveformData,
-      beatPositions,
-      energySegments,
-      albumArt: metadata.albumArt,
-    };
-
+    const track = await analyzeTrackFile(file);
     addTrack(track);
   }
 

@@ -9,11 +9,13 @@ export interface EnergySegment {
   avgEnergy: number;
 }
 
-export function analyzeEnergy(audioBuffer: AudioBuffer, beatPositions: number[]): EnergySegment[] {
+export function analyzeEnergy(
+  channelData: Float32Array,
+  sampleRate: number,
+  duration: number,
+  beatPositions: number[]
+): EnergySegment[] {
   if (beatPositions.length < 2) return [];
-
-  const channelData = audioBuffer.getChannelData(0);
-  const sampleRate = audioBuffer.sampleRate;
 
   const beatEnergies: number[] = [];
   for (let i = 0; i < beatPositions.length - 1; i++) {
@@ -76,7 +78,7 @@ export function analyzeEnergy(audioBuffer: AudioBuffer, beatPositions: number[])
       startBeat: g,
       endBeat: end - 1,
       startTime: beatPositions[g],
-      endTime: end < beatPositions.length ? beatPositions[end] : audioBuffer.duration,
+      endTime: end < beatPositions.length ? beatPositions[end] : duration,
       type,
       avgEnergy,
     });
