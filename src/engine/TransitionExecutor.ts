@@ -55,50 +55,71 @@ function executeLongBlend(ctx: TransitionContext, signal: AbortSignal): void {
   const { engine, fromDeck, toDeck, fromTrack, toTrack, fromSpeed, toSpeed } = ctx;
 
   const matchRate = fromTrack.bpm * fromSpeed / toTrack.bpm;
-  engine.setPlaybackRate(toDeck, matchRate);
+  engine.setPlaybackRate(toDeck, toSpeed);
   engine.play(toDeck);
   ctx.updateDeck(toDeck, { isPlaying: true });
 
-  const savedFromLow = engine.getEQ(fromDeck, 'low');
-  const startValue = engine.getCrossfaderValue();
-  const targetValue = toDeck === 'B' ? 1 : -1;
+  // Phase 1: speed sync (5s) — same as tempo-ramp
+  let syncStep = 0;
+  const syncSteps = 25;
 
-  let step = 0;
-  const totalSteps = 100;
-
-  managedInterval(signal, (stop) => {
+  managedInterval(signal, (stopSync) => {
     if (signal.aborted) return;
-    step++;
-    const t = step / totalSteps;
-    const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-    const pos = startValue + (targetValue - startValue) * eased;
-    engine.setCrossfader(pos);
-    ctx.setCrossfaderPosition(pos);
+    syncStep++;
+    const t = syncStep / syncSteps;
+    const eased = t * t * (3 - 2 * t);
+    engine.setPlaybackRate(toDeck, toSpeed + (matchRate - toSpeed) * eased);
+    ctx.onProgress(Math.round(85 + t * 5), 'Syncing...');
 
-    if (step === 50) {
-      engine.setEQ(fromDeck, 'low', -12);
-    }
+    if (syncStep >= syncSteps) {
+      stopSync();
 
-    ctx.onProgress(Math.round(85 + t * 10), 'Blending...');
+      // Phase 2: crossfade (16s) with gentle bass crossover
+      const savedFromLow = engine.getEQ(fromDeck, 'low');
+      const startValue = engine.getCrossfaderValue();
+      const targetValue = toDeck === 'B' ? 1 : -1;
+      let fadeStep = 0;
+      const fadeSteps = 80;
 
-    if (step >= totalSteps) {
-      stop();
-      engine.setEQ(fromDeck, 'low', savedFromLow);
-      engine.stop(fromDeck);
-      ctx.updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
-
-      let restoreStep = 0;
-      const restoreSteps = 20;
-      managedInterval(signal, (stopRestore) => {
+      managedInterval(signal, (stopFade) => {
         if (signal.aborted) return;
-        restoreStep++;
-        const rt = restoreStep / restoreSteps;
-        const easeR = rt * rt * (3 - 2 * rt);
-        engine.setPlaybackRate(toDeck, matchRate + (toSpeed - matchRate) * easeR);
+        fadeStep++;
+        const t2 = fadeStep / fadeSteps;
+        const eased2 = t2 < 0.5 ? 2 * t2 * t2 : -1 + (4 - 2 * t2) * t2;
+        const pos = startValue + (targetValue - startValue) * eased2;
+        engine.setCrossfader(pos);
+        ctx.setCrossfaderPosition(pos);
 
-        if (restoreStep >= restoreSteps) {
-          stopRestore();
-          ctx.onComplete();
+        // Gradual bass reduction on outgoing in the middle third (steps 27-53)
+        if (fadeStep >= 27 && fadeStep <= 53) {
+          const bassT = (fadeStep - 27) / 26;
+          const bassReduce = bassT * 6;
+          engine.setEQ(fromDeck, 'low', savedFromLow - bassReduce);
+        }
+
+        ctx.onProgress(Math.round(90 + t2 * 5), 'Blending...');
+
+        if (fadeStep >= fadeSteps) {
+          stopFade();
+          engine.setEQ(fromDeck, 'low', savedFromLow);
+          engine.stop(fromDeck);
+          ctx.updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
+
+          // Phase 3: speed restore (5s)
+          let restoreStep = 0;
+          const restoreSteps = 25;
+          managedInterval(signal, (stopRestore) => {
+            if (signal.aborted) return;
+            restoreStep++;
+            const rt = restoreStep / restoreSteps;
+            const easeR = rt * rt * (3 - 2 * rt);
+            engine.setPlaybackRate(toDeck, matchRate + (toSpeed - matchRate) * easeR);
+
+            if (restoreStep >= restoreSteps) {
+              stopRestore();
+              ctx.onComplete();
+            }
+          }, 200);
         }
       }, 200);
     }
@@ -171,69 +192,76 @@ function executeFilterSweep(ctx: TransitionContext, signal: AbortSignal): void {
   const { engine, fromDeck, toDeck, fromTrack, toTrack, fromSpeed, toSpeed } = ctx;
 
   const matchRate = fromTrack.bpm * fromSpeed / toTrack.bpm;
-  engine.setPlaybackRate(toDeck, matchRate);
+  engine.setPlaybackRate(toDeck, toSpeed);
   engine.play(toDeck);
   ctx.updateDeck(toDeck, { isPlaying: true });
 
   const savedFromLow = engine.getEQ(fromDeck, 'low');
   const savedFromMid = engine.getEQ(fromDeck, 'mid');
-  const savedFromHigh = engine.getEQ(fromDeck, 'high');
   const savedToHigh = engine.getEQ(toDeck, 'high');
 
-  engine.setEQ(toDeck, 'high', -12);
+  engine.setEQ(toDeck, 'high', -6);
 
   const startValue = engine.getCrossfaderValue();
   const targetValue = toDeck === 'B' ? 1 : -1;
 
-  let phase1Step = 0;
-  const phase1Steps = 50;
+  // Phase 1: speed sync + EQ sweep (5s)
+  let syncStep = 0;
+  const syncSteps = 25;
 
-  managedInterval(signal, (stopPhase1) => {
+  managedInterval(signal, (stopSync) => {
     if (signal.aborted) return;
-    phase1Step++;
-    const t = phase1Step / phase1Steps;
-    engine.setEQ(fromDeck, 'low', savedFromLow + (-12 - savedFromLow) * t);
-    engine.setEQ(fromDeck, 'mid', savedFromMid + (-12 - savedFromMid) * t);
-    engine.setEQ(toDeck, 'high', -12 + (savedToHigh - (-12)) * t);
-    const pos = startValue + (targetValue - startValue) * t * 0.5;
-    engine.setCrossfader(pos);
-    ctx.setCrossfaderPosition(pos);
+    syncStep++;
+    const t = syncStep / syncSteps;
+    const eased = t * t * (3 - 2 * t);
+    engine.setPlaybackRate(toDeck, toSpeed + (matchRate - toSpeed) * eased);
+    engine.setEQ(fromDeck, 'low', savedFromLow - t * 6);
+    engine.setEQ(toDeck, 'high', -6 + (savedToHigh + 6) * t);
     ctx.onProgress(Math.round(85 + t * 5), 'Sweeping...');
 
-    if (phase1Step >= phase1Steps) {
-      stopPhase1();
-      const phase2Start = startValue + (targetValue - startValue) * 0.5;
-      let phase2Step = 0;
-      const phase2Steps = 40;
+    if (syncStep >= syncSteps) {
+      stopSync();
 
-      managedInterval(signal, (stopPhase2) => {
+      // Phase 2: crossfade with continued EQ sweep (16s)
+      let fadeStep = 0;
+      const fadeSteps = 80;
+
+      managedInterval(signal, (stopFade) => {
         if (signal.aborted) return;
-        phase2Step++;
-        const t2 = phase2Step / phase2Steps;
-        const pos2 = phase2Start + (targetValue - phase2Start) * t2;
-        engine.setCrossfader(pos2);
-        ctx.setCrossfaderPosition(pos2);
+        fadeStep++;
+        const t2 = fadeStep / fadeSteps;
+        const eased2 = t2 < 0.5 ? 2 * t2 * t2 : -1 + (4 - 2 * t2) * t2;
+        const pos = startValue + (targetValue - startValue) * eased2;
+        engine.setCrossfader(pos);
+        ctx.setCrossfaderPosition(pos);
+
+        // Gradually thin outgoing mid in second half of crossfade
+        if (t2 > 0.5) {
+          const midT = (t2 - 0.5) * 2;
+          engine.setEQ(fromDeck, 'mid', savedFromMid - midT * 6);
+        }
+
         ctx.onProgress(Math.round(90 + t2 * 5), 'Fading in...');
 
-        if (phase2Step >= phase2Steps) {
-          stopPhase2();
+        if (fadeStep >= fadeSteps) {
+          stopFade();
           engine.setEQ(fromDeck, 'low', savedFromLow);
           engine.setEQ(fromDeck, 'mid', savedFromMid);
-          engine.setEQ(fromDeck, 'high', savedFromHigh);
           engine.stop(fromDeck);
           ctx.updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
 
-          let phase3Step = 0;
-          const phase3Steps = 10;
-
-          managedInterval(signal, (stopPhase3) => {
+          // Phase 3: speed restore (5s)
+          let restoreStep = 0;
+          const restoreSteps = 25;
+          managedInterval(signal, (stopRestore) => {
             if (signal.aborted) return;
-            phase3Step++;
-            const t3 = phase3Step / phase3Steps;
-            engine.setPlaybackRate(toDeck, matchRate + (toSpeed - matchRate) * t3);
+            restoreStep++;
+            const rt = restoreStep / restoreSteps;
+            const easeR = rt * rt * (3 - 2 * rt);
+            engine.setPlaybackRate(toDeck, matchRate + (toSpeed - matchRate) * easeR);
 
-            if (phase3Step >= phase3Steps) {
-              stopPhase3();
+            if (restoreStep >= restoreSteps) {
+              stopRestore();
               ctx.onComplete();
             }
           }, 200);
@@ -243,110 +271,167 @@ function executeFilterSweep(ctx: TransitionContext, signal: AbortSignal): void {
   }, 200);
 }
 
+// Long blend with echo/reverb tail layered on the outgoing deck during crossfade
 function executeEchoDrop(ctx: TransitionContext, signal: AbortSignal): void {
-  const { engine, fromDeck, toDeck, fromTrack, toSpeed } = ctx;
+  const { engine, fromDeck, toDeck, fromTrack, toTrack, fromSpeed, toSpeed } = ctx;
 
-  const echo = new EchoOut();
-  echo.apply(engine.getDeckOutputNode(fromDeck), fromTrack.bpm, engine.getContext());
-  signal.addEventListener('abort', () => echo.remove(), { once: true });
+  const matchRate = fromTrack.bpm * fromSpeed / toTrack.bpm;
+  engine.setPlaybackRate(toDeck, toSpeed);
+  engine.play(toDeck);
+  ctx.updateDeck(toDeck, { isPlaying: true });
 
-  const gainNode = engine.getDeckOutputNode(fromDeck);
-  const audioCtx = engine.getContext();
-  const now = audioCtx.currentTime;
-  gainNode.gain.cancelScheduledValues(now);
-  gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-  gainNode.gain.linearRampToValueAtTime(0, now + 3);
+  // Phase 1: speed sync (5s)
+  let syncStep = 0;
+  const syncSteps = 25;
 
-  const startTime = Date.now();
-  managedInterval(signal, (stopProgress) => {
+  managedInterval(signal, (stopSync) => {
     if (signal.aborted) return;
-    const elapsed = (Date.now() - startTime) / 1000;
-    if (elapsed >= 3.5) {
-      stopProgress();
-      return;
+    syncStep++;
+    const t = syncStep / syncSteps;
+    const eased = t * t * (3 - 2 * t);
+    engine.setPlaybackRate(toDeck, toSpeed + (matchRate - toSpeed) * eased);
+    ctx.onProgress(Math.round(85 + t * 5), 'Syncing...');
+
+    if (syncStep >= syncSteps) {
+      stopSync();
+
+      // Apply echo on outgoing as the crossfade begins
+      const echo = new EchoOut();
+      echo.apply(engine.getDeckOutputNode(fromDeck), fromTrack.bpm, engine.getContext());
+      signal.addEventListener('abort', () => echo.remove(), { once: true });
+
+      // Phase 2: crossfade (16s)
+      const startValue = engine.getCrossfaderValue();
+      const targetValue = toDeck === 'B' ? 1 : -1;
+      let fadeStep = 0;
+      const fadeSteps = 80;
+
+      managedInterval(signal, (stopFade) => {
+        if (signal.aborted) return;
+        fadeStep++;
+        const t2 = fadeStep / fadeSteps;
+        const eased2 = t2 < 0.5 ? 2 * t2 * t2 : -1 + (4 - 2 * t2) * t2;
+        const pos = startValue + (targetValue - startValue) * eased2;
+        engine.setCrossfader(pos);
+        ctx.setCrossfaderPosition(pos);
+
+        // Re-trigger echo halfway through to keep the tail going
+        if (fadeStep === 40) {
+          const echo2 = new EchoOut();
+          echo2.apply(engine.getDeckOutputNode(fromDeck), fromTrack.bpm, engine.getContext());
+          signal.addEventListener('abort', () => echo2.remove(), { once: true });
+        }
+
+        ctx.onProgress(Math.round(90 + t2 * 5), 'Echo blend...');
+
+        if (fadeStep >= fadeSteps) {
+          stopFade();
+          engine.stop(fromDeck);
+          ctx.updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
+
+          // Phase 3: speed restore (5s)
+          let restoreStep = 0;
+          const restoreSteps = 25;
+          managedInterval(signal, (stopRestore) => {
+            if (signal.aborted) return;
+            restoreStep++;
+            const rt = restoreStep / restoreSteps;
+            const easeR = rt * rt * (3 - 2 * rt);
+            engine.setPlaybackRate(toDeck, matchRate + (toSpeed - matchRate) * easeR);
+
+            if (restoreStep >= restoreSteps) {
+              stopRestore();
+              ctx.onComplete();
+            }
+          }, 200);
+        }
+      }, 200);
     }
-    ctx.onProgress(Math.round(85 + (Math.min(elapsed, 3) / 3) * 10), 'Echo out...');
   }, 200);
-
-  managedTimeout(signal, () => {
-    if (signal.aborted) return;
-    engine.stop(fromDeck);
-    const now2 = audioCtx.currentTime;
-    gainNode.gain.cancelScheduledValues(now2);
-    gainNode.gain.setValueAtTime(1, now2);
-    ctx.updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
-
-    engine.setPlaybackRate(toDeck, toSpeed);
-    engine.play(toDeck);
-    ctx.updateDeck(toDeck, { isPlaying: true });
-
-    const targetValue = toDeck === 'B' ? 1 : -1;
-    engine.setCrossfader(targetValue);
-    ctx.setCrossfaderPosition(targetValue);
-    ctx.onProgress(95, 'Drop!');
-  }, 4000);
-
-  managedTimeout(signal, () => {
-    if (signal.aborted) return;
-    ctx.onComplete();
-  }, 8000);
 }
 
+// Long blend with gradual EQ drain on all bands of the outgoing deck
 function executeBreakdownBridge(ctx: TransitionContext, signal: AbortSignal): void {
-  const { engine, fromDeck, toDeck, toSpeed } = ctx;
+  const { engine, fromDeck, toDeck, fromTrack, toTrack, fromSpeed, toSpeed } = ctx;
 
-  const savedFromLow = engine.getEQ(fromDeck, 'low');
-  const savedFromMid = engine.getEQ(fromDeck, 'mid');
-  const savedFromHigh = engine.getEQ(fromDeck, 'high');
+  const matchRate = fromTrack.bpm * fromSpeed / toTrack.bpm;
+  engine.setPlaybackRate(toDeck, toSpeed);
+  engine.play(toDeck);
+  ctx.updateDeck(toDeck, { isPlaying: true });
 
-  let phase1Step = 0;
-  const phase1Steps = 30;
+  // Phase 1: speed sync (5s)
+  let syncStep = 0;
+  const syncSteps = 25;
 
-  managedInterval(signal, (stopPhase1) => {
+  managedInterval(signal, (stopSync) => {
     if (signal.aborted) return;
-    phase1Step++;
-    if (phase1Step > phase1Steps) { stopPhase1(); return; }
-    const t = phase1Step / phase1Steps;
-    engine.setEQ(fromDeck, 'low', savedFromLow + (-12 - savedFromLow) * t);
-    engine.setEQ(fromDeck, 'mid', savedFromMid + (-8 - savedFromMid) * t);
-    engine.setEQ(fromDeck, 'high', savedFromHigh + (-6 - savedFromHigh) * t);
-    ctx.onProgress(Math.round(85 + t * 3), 'Breaking down...');
+    syncStep++;
+    const t = syncStep / syncSteps;
+    const eased = t * t * (3 - 2 * t);
+    engine.setPlaybackRate(toDeck, toSpeed + (matchRate - toSpeed) * eased);
+    ctx.onProgress(Math.round(85 + t * 5), 'Syncing...');
+
+    if (syncStep >= syncSteps) {
+      stopSync();
+
+      // Phase 2: crossfade (16s) with progressive EQ drain on outgoing
+      const savedFromLow = engine.getEQ(fromDeck, 'low');
+      const savedFromMid = engine.getEQ(fromDeck, 'mid');
+      const savedFromHigh = engine.getEQ(fromDeck, 'high');
+      const startValue = engine.getCrossfaderValue();
+      const targetValue = toDeck === 'B' ? 1 : -1;
+      let fadeStep = 0;
+      const fadeSteps = 80;
+
+      managedInterval(signal, (stopFade) => {
+        if (signal.aborted) return;
+        fadeStep++;
+        const t2 = fadeStep / fadeSteps;
+        const eased2 = t2 < 0.5 ? 2 * t2 * t2 : -1 + (4 - 2 * t2) * t2;
+        const pos = startValue + (targetValue - startValue) * eased2;
+        engine.setCrossfader(pos);
+        ctx.setCrossfaderPosition(pos);
+
+        // Progressive EQ drain: bass first, then mids, then highs
+        if (t2 < 0.4) {
+          engine.setEQ(fromDeck, 'low', savedFromLow - (t2 / 0.4) * 8);
+        } else {
+          engine.setEQ(fromDeck, 'low', savedFromLow - 8);
+          const midT = Math.min((t2 - 0.4) / 0.3, 1);
+          engine.setEQ(fromDeck, 'mid', savedFromMid - midT * 6);
+          if (t2 > 0.7) {
+            const highT = (t2 - 0.7) / 0.3;
+            engine.setEQ(fromDeck, 'high', savedFromHigh - highT * 4);
+          }
+        }
+
+        ctx.onProgress(Math.round(90 + t2 * 5), 'Bridging...');
+
+        if (fadeStep >= fadeSteps) {
+          stopFade();
+          engine.setEQ(fromDeck, 'low', savedFromLow);
+          engine.setEQ(fromDeck, 'mid', savedFromMid);
+          engine.setEQ(fromDeck, 'high', savedFromHigh);
+          engine.stop(fromDeck);
+          ctx.updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
+
+          // Phase 3: speed restore (5s)
+          let restoreStep = 0;
+          const restoreSteps = 25;
+          managedInterval(signal, (stopRestore) => {
+            if (signal.aborted) return;
+            restoreStep++;
+            const rt = restoreStep / restoreSteps;
+            const easeR = rt * rt * (3 - 2 * rt);
+            engine.setPlaybackRate(toDeck, matchRate + (toSpeed - matchRate) * easeR);
+
+            if (restoreStep >= restoreSteps) {
+              stopRestore();
+              ctx.onComplete();
+            }
+          }, 200);
+        }
+      }, 200);
+    }
   }, 200);
-
-  managedTimeout(signal, () => {
-    if (signal.aborted) return;
-    engine.setPlaybackRate(toDeck, toSpeed);
-    engine.play(toDeck);
-    ctx.updateDeck(toDeck, { isPlaying: true });
-
-    const startValue = engine.getCrossfaderValue();
-    const targetValue = toDeck === 'B' ? 1 : -1;
-    let phase2Step = 0;
-    const phase2Steps = 50;
-
-    managedInterval(signal, (stopPhase2) => {
-      if (signal.aborted) return;
-      phase2Step++;
-      const t = phase2Step / phase2Steps;
-      const eased = t * t;
-      const pos = startValue + (targetValue - startValue) * eased;
-      engine.setCrossfader(pos);
-      ctx.setCrossfaderPosition(pos);
-      ctx.onProgress(Math.round(88 + t * 7), 'Bridging...');
-
-      if (phase2Step >= phase2Steps) {
-        stopPhase2();
-        engine.setEQ(fromDeck, 'low', savedFromLow);
-        engine.setEQ(fromDeck, 'mid', savedFromMid);
-        engine.setEQ(fromDeck, 'high', savedFromHigh);
-        engine.stop(fromDeck);
-        ctx.updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
-      }
-    }, 200);
-  }, 4000);
-
-  managedTimeout(signal, () => {
-    if (signal.aborted) return;
-    ctx.onComplete();
-  }, 16000);
 }

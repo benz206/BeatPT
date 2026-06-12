@@ -15,7 +15,7 @@ export function findBestMixPoint(
   const latestStart = trackDuration - transitionDuration - 2;
   if (latestStart <= 0) return null;
 
-  const windowStart = Math.max(0, latestStart - 30);
+  const windowStart = Math.max(0, latestStart - 10);
 
   const candidates = energySegments.filter(
     (s) => s.startTime >= windowStart && s.startTime <= latestStart

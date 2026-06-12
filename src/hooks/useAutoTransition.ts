@@ -58,7 +58,7 @@ export function useAutoTransition() {
               plan.estimatedDuration,
               plan.type === 'echo-drop',
             );
-            if (point && position >= point.triggerTime - 60) {
+            if (point && position >= point.triggerTime - 40) {
               mixPointRef.current = point;
             }
           }
@@ -67,8 +67,8 @@ export function useAutoTransition() {
             lastConfidenceRef.current = now;
             if (mixPointRef.current) {
               const timeUntilTrigger = mixPointRef.current.triggerTime - position;
-              if (timeUntilTrigger <= 60 && timeUntilTrigger > 0) {
-                const progress = 1 - timeUntilTrigger / 60;
+              if (timeUntilTrigger <= 40 && timeUntilTrigger > 0) {
+                const progress = 1 - timeUntilTrigger / 40;
                 state.setTransitionConfidence(Math.round(30 + progress * 55));
               }
             } else if (remaining > 60) {

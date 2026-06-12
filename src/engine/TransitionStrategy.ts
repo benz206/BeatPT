@@ -39,29 +39,19 @@ export function selectTransition(
   switch (relationship) {
     case 'same':
       type = 'long-blend';
-      estimatedDuration = 24;
+      estimatedDuration = 26;
       break;
     case 'small-gap':
-      if (Math.random() < 0.5) {
-        type = 'tempo-ramp';
-        estimatedDuration = 26;
-      } else {
-        type = 'filter-sweep';
-        estimatedDuration = 20;
-      }
+      type = Math.random() < 0.5 ? 'tempo-ramp' : 'filter-sweep';
+      estimatedDuration = 26;
       break;
     case 'large-gap':
-      if (Math.random() < 0.5) {
-        type = 'echo-drop';
-        estimatedDuration = 8;
-      } else {
-        type = 'breakdown-bridge';
-        estimatedDuration = 16;
-      }
+      type = Math.random() < 0.5 ? 'echo-drop' : 'breakdown-bridge';
+      estimatedDuration = 26;
       break;
     case 'half-double':
       type = 'long-blend';
-      estimatedDuration = 24;
+      estimatedDuration = 26;
       break;
   }
 
