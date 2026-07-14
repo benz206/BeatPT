@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react';
 import { AudioEngine } from '../engine/AudioEngine';
 import { analyzeTrackFile } from '../engine/TrackAnalyzer';
+import { computeMatchRate } from '../engine/TransitionExecutor';
 import { useAppStore } from '../stores/useAppStore';
 
 type Deck = 'A' | 'B';
@@ -112,7 +113,8 @@ export function useAudioEngine() {
     useAppStore.getState().setMasterVolume(value);
   }, []);
 
-  // Match this deck's effective BPM to the other deck's
+  // Match this deck's effective BPM to the other deck's, treating half/double
+  // time as equivalent so a 170↔85 pair syncs with a tiny nudge, not 2x speed
   const sync = useCallback(
     (deck: Deck) => {
       const state = useAppStore.getState();
@@ -120,8 +122,7 @@ export function useAudioEngine() {
       const otherState = deck === 'A' ? state.deckB : state.deckA;
       if (!thisState.track || !otherState.track) return;
 
-      const targetBPM = otherState.track.bpm * otherState.speed;
-      const rate = Math.max(0.5, Math.min(2, targetBPM / thisState.track.bpm));
+      const rate = computeMatchRate(otherState.track.bpm, otherState.speed, thisState.track.bpm);
       engineRef.current.setPlaybackRate(deck, rate);
       updateDeck(deck, { speed: rate });
     },

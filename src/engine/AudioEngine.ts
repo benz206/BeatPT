@@ -413,7 +413,9 @@ export class AudioEngine {
     const now = this.ctx.currentTime;
     node.gain.cancelScheduledValues(now);
     node.gain.setValueAtTime(node.gain.value, now);
-    node.gain.linearRampToValueAtTime(Math.max(-12, Math.min(12, value)), now + rampTime);
+    // UI knobs stay within ±12; the extra downward range lets transitions and
+    // kill effects do a real band kill instead of a -12 dB duck.
+    node.gain.linearRampToValueAtTime(Math.max(-26, Math.min(12, value)), now + rampTime);
   }
 
   getEQ(deck: Deck, band: EQBand): number {

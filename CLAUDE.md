@@ -30,7 +30,7 @@ Deck source → TrimGain → Keylock worklet → GainNode → EQ (low/mid/high s
 
 - Two parallel signal chains (Deck A, Deck B) merge through equal-power crossfader gains into a shared `DynamicsCompressorNode` limiter.
 - `TrimGain` applies per-track loudness normalization (computed at import). The keylock worklet (`keylockProcessor.js`, WSOLA + resampler) pitch-shifts by the inverse of the deck's varispeed rate so tempo changes don't shift pitch; it adds a constant ~55 ms latency on both decks and is bypassed gracefully if the worklet fails to load.
-- EQ is three `BiquadFilterNode`s: lowshelf 250 Hz, peaking 1 kHz, highshelf 4 kHz. Range: -12 to +12 dB.
+- EQ is three `BiquadFilterNode`s: lowshelf 250 Hz, peaking 1 kHz, highshelf 4 kHz. UI knob range is -12 to +12 dB; the engine accepts down to -26 dB so transitions and kill effects can do a true band kill.
 - All gain changes use `linearRampToValueAtTime` with a 10 ms ramp to avoid clicks.
 
 ### Effects System (`src/engine/Effects.ts`, `DJActions.ts`)

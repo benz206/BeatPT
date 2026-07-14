@@ -96,9 +96,11 @@ export type BassSwapSettings = {
 
 // BassSwap returns EQ settings rather than owning audio nodes.
 // The caller applies them via AudioEngine.setEQ and reverts after duration.
-export function getBassSwapSettings(currentDeckALow: number, currentDeckBLow: number): BassSwapSettings {
+// -26 dB is a true kill on the active deck so the boosted bass on the other
+// deck doesn't stack on top of it.
+export function getBassSwapSettings(_currentDeckALow: number, currentDeckBLow: number): BassSwapSettings {
   return {
-    deckA: { low: Math.max(-12, currentDeckALow - 12) },
+    deckA: { low: -26 },
     deckB: { low: Math.min(12, currentDeckBLow + 8) },
   };
 }

@@ -186,7 +186,7 @@ const actions: DJAction[] = [
       const deck = activeDeck();
       const band = Math.random() > 0.5 ? ('high' as const) : ('mid' as const);
       const current = e.getEQ(deck, band);
-      e.setEQ(deck, band, -12);
+      e.setEQ(deck, band, -26);
       setTimeout(() => e.setEQ(deck, band, current), 2500);
     },
   },

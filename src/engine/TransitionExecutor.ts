@@ -59,9 +59,13 @@ function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
+// Full band kill for bassline swaps — deeper than the UI's -12 dB knob range.
+const BASS_KILL = -26;
+
 // Rate that matches the incoming track's tempo to the outgoing deck's effective
 // tempo, treating half/double BPM as equivalent so the correction stays small.
-function computeMatchRate(fromBPM: number, fromSpeed: number, toBPM: number): number {
+// Also used by the manual sync button.
+export function computeMatchRate(fromBPM: number, fromSpeed: number, toBPM: number): number {
   const target = fromBPM * fromSpeed;
   let best = 1;
   let bestErr = Infinity;
@@ -272,9 +276,11 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
 
   // Incoming starts beat-aligned and tempo-matched, with its bass out of the
   // way and its mids/highs pulled back so it eases in rather than slamming in
-  engine.setEQ(toDeck, 'low', -12);
-  engine.setEQ(toDeck, 'mid', Math.max(-12, savedToMid - opts.inMidCut));
-  engine.setEQ(toDeck, 'high', Math.max(-12, savedToHigh - opts.inHighCut));
+  const inMidStart = Math.max(-12, savedToMid - opts.inMidCut);
+  const inHighStart = Math.max(-12, savedToHigh - opts.inHighCut);
+  engine.setEQ(toDeck, 'low', BASS_KILL);
+  engine.setEQ(toDeck, 'mid', inMidStart);
+  engine.setEQ(toDeck, 'high', inHighStart);
   const dtWall = scheduleIncoming(ctx, rate, true);
   ctx.onProgress(86, 'Beatmatched...');
 
@@ -299,16 +305,18 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
     engine.setCrossfader(pos, TICK_S);
     ctx.setCrossfaderPosition(pos);
 
-    // Incoming mids/highs sweep up to their settings over the first 60%
+    // Incoming mids/highs sweep up to their saved settings over the first 60%
+    // (interpolate start→saved, so a clamped start can't overshoot the target)
     const inT = smoothstep(Math.min(1, t / 0.6));
-    engine.setEQ(toDeck, 'mid', Math.max(-12, savedToMid - opts.inMidCut) + opts.inMidCut * inT, TICK_S);
-    engine.setEQ(toDeck, 'high', Math.max(-12, savedToHigh - opts.inHighCut) + opts.inHighCut * inT, TICK_S);
+    engine.setEQ(toDeck, 'mid', inMidStart + (savedToMid - inMidStart) * inT, TICK_S);
+    engine.setEQ(toDeck, 'high', inHighStart + (savedToHigh - inHighStart) * inT, TICK_S);
 
-    // Swap basslines through the middle of the blend
+    // Swap basslines through the middle of the blend: full kill on each side
+    // so the two low ends never stack up and mud out the mix
     const swapT = Math.min(1, Math.max(0, (t - 0.45) / 0.2));
     if (swapT > 0) {
-      engine.setEQ(fromDeck, 'low', savedFromLow + (-12 - savedFromLow) * swapT, TICK_S);
-      engine.setEQ(toDeck, 'low', -12 + (savedToLow + 12) * swapT, TICK_S);
+      engine.setEQ(fromDeck, 'low', savedFromLow + (BASS_KILL - savedFromLow) * swapT, TICK_S);
+      engine.setEQ(toDeck, 'low', BASS_KILL + (savedToLow - BASS_KILL) * swapT, TICK_S);
     }
 
     // Outgoing mids/highs recede through the back half so the old track
@@ -355,7 +363,9 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
     // bend. Start from where phase-locking left the rate, not the nominal match.
     const from = engine.getPlaybackRate(toDeck);
     await ramp(signal, 12, (t) => {
-      engine.setPlaybackRate(toDeck, from + (toSpeed - from) * smoothstep(t), TICK_S);
+      const s = from + (toSpeed - from) * smoothstep(t);
+      engine.setPlaybackRate(toDeck, s, TICK_S);
+      ctx.updateDeck(toDeck, { speed: s });
     });
     if (signal.aborted) { restore(true); return; }
     engine.setPlaybackRate(toDeck, toSpeed);
