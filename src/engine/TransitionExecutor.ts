@@ -67,8 +67,23 @@ function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
-// Full band kill for bassline swaps — deeper than the UI's -12 dB knob range.
-const BASS_KILL = -26;
+// Full band kill for handoffs — deeper than the UI's -12 dB knob range.
+const BAND_KILL = -26;
+
+// EQ setter bound to a transition: writes the engine and mirrors the values
+// into the store so the deck knobs animate with the mix.
+function makeEQSetter(ctx: TransitionContext) {
+  const { engine } = ctx;
+  const cache: Record<'A' | 'B', { low: number; mid: number; high: number }> = {
+    A: { low: engine.getEQ('A', 'low'), mid: engine.getEQ('A', 'mid'), high: engine.getEQ('A', 'high') },
+    B: { low: engine.getEQ('B', 'low'), mid: engine.getEQ('B', 'mid'), high: engine.getEQ('B', 'high') },
+  };
+  return (deck: 'A' | 'B', band: 'low' | 'mid' | 'high', value: number, rampS?: number): void => {
+    engine.setEQ(deck, band, value, rampS);
+    cache[deck][band] = Math.max(-26, Math.min(12, value));
+    ctx.updateDeck(deck, { eq: { ...cache[deck] } });
+  };
+}
 
 // Rate that matches the incoming track's tempo to the outgoing deck's effective
 // tempo, treating half/double BPM as equivalent so the correction stays small.
@@ -218,17 +233,15 @@ async function parkCrossfader(ctx: TransitionContext, signal: AbortSignal, fromS
 
 interface BlendOpts {
   tempoMatch: boolean;
-  inHighCut: number;  // dB the incoming highs start below their setting, swept in over the first 60%
+  inHighCut: number;  // dB the incoming highs start below their setting until the high handoff
   inMidCut: number;   // same for the incoming mids
-  outHighDrop: number; // dB the outgoing highs recede over the back half
-  outMidDrop: number;  // same for the outgoing mids
 }
 
 const BLEND_OPTS: Record<Exclude<TransitionType, 'echo-drop'>, BlendOpts> = {
-  'long-blend': { tempoMatch: true, inHighCut: 4, inMidCut: 3, outHighDrop: 4, outMidDrop: 5 },
-  'tempo-ramp': { tempoMatch: true, inHighCut: 4, inMidCut: 3, outHighDrop: 4, outMidDrop: 5 },
-  'filter-sweep': { tempoMatch: true, inHighCut: 8, inMidCut: 4, outHighDrop: 8, outMidDrop: 5 },
-  'breakdown-bridge': { tempoMatch: false, inHighCut: 4, inMidCut: 6, outHighDrop: 6, outMidDrop: 8 },
+  'long-blend': { tempoMatch: true, inHighCut: 4, inMidCut: 3 },
+  'tempo-ramp': { tempoMatch: true, inHighCut: 4, inMidCut: 3 },
+  'filter-sweep': { tempoMatch: true, inHighCut: 8, inMidCut: 4 },
+  'breakdown-bridge': { tempoMatch: false, inHighCut: 4, inMidCut: 6 },
 };
 
 export function executeTransition(ctx: TransitionContext): AbortController {
@@ -256,16 +269,7 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   const savedToMid = engine.getEQ(toDeck, 'mid');
   const savedToHigh = engine.getEQ(toDeck, 'high');
 
-  // Local EQ mirror pushed to the store so the deck knobs animate with the mix
-  const eqState = {
-    [fromDeck]: { low: savedFromLow, mid: savedFromMid, high: savedFromHigh },
-    [toDeck]: { low: savedToLow, mid: savedToMid, high: savedToHigh },
-  } as Record<'A' | 'B', { low: number; mid: number; high: number }>;
-  const setEQ = (deck: 'A' | 'B', band: 'low' | 'mid' | 'high', value: number, rampS?: number): void => {
-    engine.setEQ(deck, band, value, rampS);
-    eqState[deck][band] = Math.max(-26, Math.min(12, value));
-    ctx.updateDeck(deck, { eq: { ...eqState[deck] } });
-  };
+  const setEQ = makeEQSetter(ctx);
 
   // Single idempotent teardown: restore both decks' EQs and leave the rates sane.
   // `withRate` is false when the caller already brought toDeck to toSpeed itself.
@@ -297,7 +301,7 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   // way and its mids/highs pulled back so it eases in rather than slamming in
   const inMidStart = Math.max(-12, savedToMid - opts.inMidCut);
   const inHighStart = Math.max(-12, savedToHigh - opts.inHighCut);
-  setEQ(toDeck, 'low', BASS_KILL);
+  setEQ(toDeck, 'low', BAND_KILL);
   setEQ(toDeck, 'mid', inMidStart);
   setEQ(toDeck, 'high', inHighStart);
   const dtWall = scheduleIncoming(ctx, rate, true);
@@ -324,27 +328,21 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
     engine.setCrossfader(pos, TICK_S);
     ctx.setCrossfaderPosition(pos);
 
-    // Incoming mids/highs sweep up to their saved settings over the first 60%
-    // (interpolate start→saved, so a clamped start can't overshoot the target)
-    const inT = smoothstep(Math.min(1, t / 0.6));
-    setEQ(toDeck, 'mid', inMidStart + (savedToMid - inMidStart) * inT, TICK_S);
-    setEQ(toDeck, 'high', inHighStart + (savedToHigh - inHighStart) * inT, TICK_S);
+    // Staggered full band handoff — highs first, then mids, then bass — so no
+    // band ever plays at full strength from both decks at once. Each window
+    // swaps the band: incoming rises to its setting as outgoing falls to kill.
+    const swap = (a: number, b: number): number =>
+      smoothstep(Math.min(1, Math.max(0, (t - a) / (b - a))));
+    const hi = swap(0.3, 0.55);
+    const md = swap(0.45, 0.7);
+    const lo = swap(0.55, 0.8);
 
-    // Swap basslines through the middle of the blend: full kill on each side
-    // so the two low ends never stack up and mud out the mix
-    const swapT = Math.min(1, Math.max(0, (t - 0.45) / 0.2));
-    if (swapT > 0) {
-      setEQ(fromDeck, 'low', savedFromLow + (BASS_KILL - savedFromLow) * swapT, TICK_S);
-      setEQ(toDeck, 'low', BASS_KILL + (savedToLow - BASS_KILL) * swapT, TICK_S);
-    }
-
-    // Outgoing mids/highs recede through the back half so the old track
-    // steps aside instead of just getting quieter
-    if (t > 0.5) {
-      const outT = smoothstep((t - 0.5) * 2);
-      setEQ(fromDeck, 'mid', savedFromMid - outT * opts.outMidDrop, TICK_S);
-      setEQ(fromDeck, 'high', savedFromHigh - outT * opts.outHighDrop, TICK_S);
-    }
+    setEQ(toDeck, 'high', inHighStart + (savedToHigh - inHighStart) * hi, TICK_S);
+    setEQ(fromDeck, 'high', savedFromHigh + (BAND_KILL - savedFromHigh) * hi, TICK_S);
+    setEQ(toDeck, 'mid', inMidStart + (savedToMid - inMidStart) * md, TICK_S);
+    setEQ(fromDeck, 'mid', savedFromMid + (BAND_KILL - savedFromMid) * md, TICK_S);
+    setEQ(toDeck, 'low', BAND_KILL + (savedToLow - BAND_KILL) * lo, TICK_S);
+    setEQ(fromDeck, 'low', savedFromLow + (BAND_KILL - savedFromLow) * lo, TICK_S);
 
     const target = baseRate(t);
     if (tempoRamp) {
@@ -409,6 +407,14 @@ async function runEchoCut(ctx: TransitionContext, signal: AbortSignal): Promise<
   const wallBeat = 60 / (fromTrack.bpm * fromSpeed);
   const fadeS = Math.min(4, Math.max(1.5, FADE_BEATS['echo-drop'] * wallBeat));
 
+  const setEQ = makeEQSetter(ctx);
+  const savedLow = engine.getEQ(fromDeck, 'low');
+  const savedHigh = engine.getEQ(fromDeck, 'high');
+  const restoreEQ = (): void => {
+    setEQ(fromDeck, 'low', savedLow, 0.25);
+    setEQ(fromDeck, 'high', savedHigh, 0.25);
+  };
+
   const fromSide = fromDeck === 'A' ? -1 : 1;
   const toSide = -fromSide;
   await parkCrossfader(ctx, signal, fromSide);
@@ -433,11 +439,19 @@ async function runEchoCut(ctx: TransitionContext, signal: AbortSignal): Promise<
     const pos = fromSide + (toSide - fromSide) * smoothstep(t);
     engine.setCrossfader(pos, TICK_S);
     ctx.setCrossfaderPosition(pos);
+
+    // Outgoing dry bass ducks out fast so it never stacks with the incoming
+    // drop; highs roll off across the fade. The echo tail taps pre-EQ, so it
+    // keeps ringing at full bandwidth.
+    setEQ(fromDeck, 'low', savedLow + (BAND_KILL - savedLow) * smoothstep(Math.min(1, t / 0.5)), TICK_S);
+    setEQ(fromDeck, 'high', savedHigh + (BAND_KILL - savedHigh) * smoothstep(t), TICK_S);
+
     ctx.onProgress(Math.round(88 + t * 7), 'Echo drop...');
   });
-  if (signal.aborted) return;
+  if (signal.aborted) { restoreEQ(); return; }
 
   engine.stop(fromDeck);
+  restoreEQ();
   ctx.updateDeck(fromDeck, { isPlaying: false, currentTime: 0 });
   ctx.onComplete();
 }
