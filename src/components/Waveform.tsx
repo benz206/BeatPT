@@ -63,6 +63,7 @@ export function Waveform({ deckId }: WaveformProps) {
   const lastDrawRef = useRef({ playedX: -1, hover: null as number | null, time: '' });
 
   const track = useAppStore((s) => (deckId === 'A' ? s.deckA : s.deckB).track);
+  const mixMarker = useAppStore((s) => s.mixMarkers[deckId]);
 
   const accentColor = deckId === 'A' ? ACCENT_A : ACCENT_B;
   const dimColor = deckId === 'A' ? DIM_A : DIM_B;
@@ -137,6 +138,16 @@ export function Waveform({ deckId }: WaveformProps) {
         ctx!.drawImage(layers!.bright, 0, 0, playedX, H, 0, 0, playedX, H);
       }
 
+      // Planned merge point: where the mix will start in this track
+      if (mixMarker !== null && duration > 0) {
+        const mx = Math.round((mixMarker / duration) * W);
+        ctx!.fillStyle = '#4ade80';
+        ctx!.fillRect(mx, 0, 2, H);
+        ctx!.font = '9px monospace';
+        const tw = ctx!.measureText('MIX').width;
+        ctx!.fillText('MIX', mx + 4 + tw > W ? mx - tw - 4 : mx + 4, 10);
+      }
+
       if (progress > 0 && progress < 1) {
         ctx!.fillStyle = accentColor;
         ctx!.fillRect(playedX, 0, 2, H);
@@ -164,7 +175,7 @@ export function Waveform({ deckId }: WaveformProps) {
 
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [deckId, track, layers, accentColor]);
+  }, [deckId, track, layers, accentColor, mixMarker]);
 
   const duration = track?.duration ?? 0;
 

@@ -61,6 +61,11 @@ interface AppState {
   setTransitionConfidence: (level: number) => void;
   activeTransitionType: string | null;
   setActiveTransitionType: (type: string | null) => void;
+  // Where the next planned merge starts in each deck's track — the playing
+  // deck's transition trigger point and the queued deck's mix-in point.
+  // Null = no plan yet for that deck.
+  mixMarkers: { A: number | null; B: number | null };
+  setMixMarkers: (markers: { A: number | null; B: number | null }) => void;
 
   // AI thinking overlay
   isAIThinking: boolean;
@@ -132,6 +137,8 @@ export const useAppStore = create<AppState>((set) => ({
     set({ transitionConfidence: Math.max(0, Math.min(100, level)) }),
   activeTransitionType: null,
   setActiveTransitionType: (type) => set({ activeTransitionType: type }),
+  mixMarkers: { A: null, B: null },
+  setMixMarkers: (markers) => set({ mixMarkers: markers }),
 
   // AI thinking overlay
   isAIThinking: false,

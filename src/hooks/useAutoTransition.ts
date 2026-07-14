@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AudioEngine } from '../engine/AudioEngine';
 import { useAppStore } from '../stores/useAppStore';
 import { selectTransition } from '../engine/TransitionStrategy';
-import { findBestMixPoint, MixPoint } from '../engine/MixPointFinder';
+import { findBestMixPoint, findMixInPoint, MixPoint } from '../engine/MixPointFinder';
 import { executeTransition } from '../engine/TransitionExecutor';
 import { pickNextTrack } from '../engine/TrackSelector';
 
@@ -43,17 +43,31 @@ export function useAutoTransition() {
                 state.loadTrackToDeck(otherDeck, next);
               }
             }
+            if (state.mixMarkers.A !== null || state.mixMarkers.B !== null) {
+              state.setMixMarkers({ A: null, B: null });
+            }
             continue;
           }
 
           // Key on both track ids so swapping either deck's track re-plans
           const planKey = `${deckId}:${deckState.track.id}:${otherState.track.id}`;
           if (!planCacheRef.current || planCacheRef.current.key !== planKey) {
-            planCacheRef.current = {
-              key: planKey,
-              plan: selectTransition(deckState.track, otherState.track),
-            };
+            const plan = selectTransition(deckState.track, otherState.track);
+            planCacheRef.current = { key: planKey, plan };
             mixPointRef.current = null;
+
+            // Publish planned merge points as soon as the next track is
+            // queued, so both waveforms can flag where the mix will start.
+            const preview = findBestMixPoint(
+              deckState.track,
+              plan.estimatedDuration,
+              plan.type === 'echo-drop',
+            );
+            const markers = { A: null as number | null, B: null as number | null };
+            markers[deckId] =
+              preview?.triggerTime ?? Math.max(0, deckState.track.duration - plan.estimatedDuration - 2);
+            markers[otherDeck] = findMixInPoint(otherState.track);
+            state.setMixMarkers(markers);
           }
 
           const plan = planCacheRef.current.plan;
@@ -88,6 +102,7 @@ export function useAutoTransition() {
             mixPointRef.current = null;
             planCacheRef.current = null;
 
+            state.setMixMarkers({ A: null, B: null });
             state.setTransitionConfidence(85);
             state.setActiveTransitionType(plan.type);
 
