@@ -67,6 +67,10 @@ function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
+function clamp01(x: number): number {
+  return Math.min(1, Math.max(0, x));
+}
+
 // Full band kill for handoffs — deeper than the UI's -12 dB knob range.
 const BAND_KILL = -26;
 
@@ -323,26 +327,45 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   const syncMult = [0.5, 1, 2].reduce((a, b) =>
     Math.abs(Math.log(nominalMult / b)) < Math.abs(Math.log(nominalMult / a)) ? b : a);
 
+  // Bass swaps in one quick move on the bar nearest mid-fade, where the
+  // equal-power crossfader holds both decks at matched gain — the low end
+  // hands over at constant level instead of sagging through a slow crossfade,
+  // and the two basslines never stack. The fade starts on a bar boundary, so
+  // whole bars from the fade start land on bars.
+  const barS = 4 * wallBeat;
+  const swapStartS = Math.min(0.7 * fadeS, Math.max(0.3 * fadeS, Math.round(fadeS / 2 / barS) * barS));
+  const swapDurS = Math.min(0.5, Math.max(0.15, 0.5 * wallBeat));
+
   await ramp(signal, fadeS, (t) => {
     const pos = fromSide + (toSide - fromSide) * smoothstep(t);
     engine.setCrossfader(pos, TICK_S);
     ctx.setCrossfaderPosition(pos);
 
-    // Staggered full band handoff — highs first, then mids, then bass — so no
-    // band ever plays at full strength from both decks at once. Each window
-    // swaps the band: incoming rises to its setting as outgoing falls to kill.
-    const swap = (a: number, b: number): number =>
-      smoothstep(Math.min(1, Math.max(0, (t - a) / (b - a))));
-    const hi = swap(0.3, 0.55);
-    const md = swap(0.45, 0.7);
-    const lo = swap(0.55, 0.8);
+    // Mids/highs ride the equal-power crossfader itself, which keeps each
+    // band's total level constant; EQ only shapes the edges. Crossfading the
+    // EQs against each other mid-fade multiplied with the fader attenuation
+    // and dropped each band ~10 dB at the midpoint of its swap window.
+    // Incoming: release the ease-in trim early, while the outgoing deck
+    // still dominates the fader.
+    const rel = smoothstep(clamp01((t - 0.05) / 0.4));
+    setEQ(toDeck, 'high', inHighStart + (savedToHigh - inHighStart) * rel, TICK_S);
+    setEQ(toDeck, 'mid', inMidStart + (savedToMid - inMidStart) * rel, TICK_S);
 
-    setEQ(toDeck, 'high', inHighStart + (savedToHigh - inHighStart) * hi, TICK_S);
-    setEQ(fromDeck, 'high', savedFromHigh + (BAND_KILL - savedFromHigh) * hi, TICK_S);
-    setEQ(toDeck, 'mid', inMidStart + (savedToMid - inMidStart) * md, TICK_S);
-    setEQ(fromDeck, 'mid', savedFromMid + (BAND_KILL - savedFromMid) * md, TICK_S);
-    setEQ(toDeck, 'low', BAND_KILL + (savedToLow - BAND_KILL) * lo, TICK_S);
-    setEQ(fromDeck, 'low', savedFromLow + (BAND_KILL - savedFromLow) * lo, TICK_S);
+    // Outgoing: highs then mids wash out only late, once the fader has
+    // already pulled the deck down and the kill costs under 1 dB.
+    const hiOut = smoothstep(clamp01((t - 0.6) / 0.3));
+    const midOut = smoothstep(clamp01((t - 0.7) / 0.3));
+    setEQ(fromDeck, 'high', savedFromHigh + (BAND_KILL - savedFromHigh) * hiOut, TICK_S);
+    setEQ(fromDeck, 'mid', savedFromMid + (BAND_KILL - savedFromMid) * midOut, TICK_S);
+
+    // Bass: fast equal-power swap (sin/cos in linear gain, not dB-linear).
+    const w = clamp01((t * fadeS - swapStartS) / swapDurS);
+    const inLow = w <= 0 ? BAND_KILL
+      : Math.max(BAND_KILL, savedToLow + 20 * Math.log10(Math.sin(w * Math.PI / 2)));
+    const outLow = w >= 1 ? BAND_KILL
+      : Math.max(BAND_KILL, savedFromLow + 20 * Math.log10(Math.cos(w * Math.PI / 2)));
+    setEQ(toDeck, 'low', inLow, TICK_S);
+    setEQ(fromDeck, 'low', outLow, TICK_S);
 
     const target = baseRate(t);
     if (tempoRamp) {
