@@ -19,7 +19,7 @@ export function useAutoTransition() {
   const lastConfidenceRef = useRef(0);
   const mixPointRef = useRef<MixPoint | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const planCacheRef = useRef<{ deckId: string; plan: ReturnType<typeof selectTransition> } | null>(null);
+  const planCacheRef = useRef<{ key: string; plan: ReturnType<typeof selectTransition> } | null>(null);
   const autoQueuedForRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -59,9 +59,11 @@ export function useAutoTransition() {
             continue;
           }
 
-          if (!planCacheRef.current || planCacheRef.current.deckId !== deckId) {
+          // Key on both track ids so swapping either deck's track re-plans
+          const planKey = `${deckId}:${deckState.track.id}:${otherState.track.id}`;
+          if (!planCacheRef.current || planCacheRef.current.key !== planKey) {
             planCacheRef.current = {
-              deckId,
+              key: planKey,
               plan: selectTransition(deckState.track, otherState.track),
             };
             mixPointRef.current = null;
