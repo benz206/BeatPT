@@ -24,7 +24,15 @@ export interface TransitionContext {
   onComplete: () => void;
   onProgress: (confidence: number, message: string) => void;
   setCrossfaderPosition: (pos: number) => void;
-  updateDeck: (deck: 'A' | 'B', updates: { isPlaying?: boolean; currentTime?: number; speed?: number }) => void;
+  updateDeck: (
+    deck: 'A' | 'B',
+    updates: {
+      isPlaying?: boolean;
+      currentTime?: number;
+      speed?: number;
+      eq?: { low: number; mid: number; high: number };
+    },
+  ) => void;
 }
 
 const TICK_MS = 100;
@@ -248,18 +256,29 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   const savedToMid = engine.getEQ(toDeck, 'mid');
   const savedToHigh = engine.getEQ(toDeck, 'high');
 
+  // Local EQ mirror pushed to the store so the deck knobs animate with the mix
+  const eqState = {
+    [fromDeck]: { low: savedFromLow, mid: savedFromMid, high: savedFromHigh },
+    [toDeck]: { low: savedToLow, mid: savedToMid, high: savedToHigh },
+  } as Record<'A' | 'B', { low: number; mid: number; high: number }>;
+  const setEQ = (deck: 'A' | 'B', band: 'low' | 'mid' | 'high', value: number, rampS?: number): void => {
+    engine.setEQ(deck, band, value, rampS);
+    eqState[deck][band] = Math.max(-26, Math.min(12, value));
+    ctx.updateDeck(deck, { eq: { ...eqState[deck] } });
+  };
+
   // Single idempotent teardown: restore both decks' EQs and leave the rates sane.
   // `withRate` is false when the caller already brought toDeck to toSpeed itself.
   let restored = false;
   const restore = (withRate: boolean): void => {
     if (restored) return;
     restored = true;
-    engine.setEQ(fromDeck, 'low', savedFromLow, 0.25);
-    engine.setEQ(fromDeck, 'mid', savedFromMid, 0.25);
-    engine.setEQ(fromDeck, 'high', savedFromHigh, 0.25);
-    engine.setEQ(toDeck, 'low', savedToLow, 0.25);
-    engine.setEQ(toDeck, 'mid', savedToMid, 0.25);
-    engine.setEQ(toDeck, 'high', savedToHigh, 0.25);
+    setEQ(fromDeck, 'low', savedFromLow, 0.25);
+    setEQ(fromDeck, 'mid', savedFromMid, 0.25);
+    setEQ(fromDeck, 'high', savedFromHigh, 0.25);
+    setEQ(toDeck, 'low', savedToLow, 0.25);
+    setEQ(toDeck, 'mid', savedToMid, 0.25);
+    setEQ(toDeck, 'high', savedToHigh, 0.25);
     if (withRate) {
       if (Math.abs(engine.getPlaybackRate(toDeck) - toSpeed) > 0.002) {
         engine.setPlaybackRate(toDeck, toSpeed, 2);
@@ -278,9 +297,9 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
   // way and its mids/highs pulled back so it eases in rather than slamming in
   const inMidStart = Math.max(-12, savedToMid - opts.inMidCut);
   const inHighStart = Math.max(-12, savedToHigh - opts.inHighCut);
-  engine.setEQ(toDeck, 'low', BASS_KILL);
-  engine.setEQ(toDeck, 'mid', inMidStart);
-  engine.setEQ(toDeck, 'high', inHighStart);
+  setEQ(toDeck, 'low', BASS_KILL);
+  setEQ(toDeck, 'mid', inMidStart);
+  setEQ(toDeck, 'high', inHighStart);
   const dtWall = scheduleIncoming(ctx, rate, true);
   ctx.onProgress(86, 'Beatmatched...');
 
@@ -308,23 +327,23 @@ async function runBlend(ctx: TransitionContext, signal: AbortSignal, opts: Blend
     // Incoming mids/highs sweep up to their saved settings over the first 60%
     // (interpolate start→saved, so a clamped start can't overshoot the target)
     const inT = smoothstep(Math.min(1, t / 0.6));
-    engine.setEQ(toDeck, 'mid', inMidStart + (savedToMid - inMidStart) * inT, TICK_S);
-    engine.setEQ(toDeck, 'high', inHighStart + (savedToHigh - inHighStart) * inT, TICK_S);
+    setEQ(toDeck, 'mid', inMidStart + (savedToMid - inMidStart) * inT, TICK_S);
+    setEQ(toDeck, 'high', inHighStart + (savedToHigh - inHighStart) * inT, TICK_S);
 
     // Swap basslines through the middle of the blend: full kill on each side
     // so the two low ends never stack up and mud out the mix
     const swapT = Math.min(1, Math.max(0, (t - 0.45) / 0.2));
     if (swapT > 0) {
-      engine.setEQ(fromDeck, 'low', savedFromLow + (BASS_KILL - savedFromLow) * swapT, TICK_S);
-      engine.setEQ(toDeck, 'low', BASS_KILL + (savedToLow - BASS_KILL) * swapT, TICK_S);
+      setEQ(fromDeck, 'low', savedFromLow + (BASS_KILL - savedFromLow) * swapT, TICK_S);
+      setEQ(toDeck, 'low', BASS_KILL + (savedToLow - BASS_KILL) * swapT, TICK_S);
     }
 
     // Outgoing mids/highs recede through the back half so the old track
     // steps aside instead of just getting quieter
     if (t > 0.5) {
       const outT = smoothstep((t - 0.5) * 2);
-      engine.setEQ(fromDeck, 'mid', savedFromMid - outT * opts.outMidDrop, TICK_S);
-      engine.setEQ(fromDeck, 'high', savedFromHigh - outT * opts.outHighDrop, TICK_S);
+      setEQ(fromDeck, 'mid', savedFromMid - outT * opts.outMidDrop, TICK_S);
+      setEQ(fromDeck, 'high', savedFromHigh - outT * opts.outHighDrop, TICK_S);
     }
 
     const target = baseRate(t);

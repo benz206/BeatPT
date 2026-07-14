@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useAppStore } from '../stores/useAppStore';
 import { AudioEngine } from '../engine/AudioEngine';
 import { useFileImport } from '../hooks/useFileImport';
@@ -9,6 +9,13 @@ export function TrackLibrary() {
   const library = useAppStore((s) => s.library);
   const { importFiles, isImporting: isLoading } = useFileImport();
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
+
+  // Sort by BPM (then name) so mixable neighbours sit next to each other,
+  // instead of whatever order the files were imported in
+  const sortedLibrary = useMemo(
+    () => [...library].sort((a, b) => a.bpm - b.bpm || a.name.localeCompare(b.name)),
+    [library]
+  );
 
   const handleImport = useCallback(() => {
     importFiles();
@@ -67,7 +74,7 @@ export function TrackLibrary() {
           </div>
         ) : (
           <ul className="py-1">
-            {library.map((track) => (
+            {sortedLibrary.map((track) => (
               <li key={track.id}>
                 <button
                   onClick={() => setSelectedTrackId(selectedTrackId === track.id ? null : track.id)}

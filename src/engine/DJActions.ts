@@ -52,6 +52,14 @@ function deckVolume(deck: 'A' | 'B'): number {
   return (deck === 'A' ? state.deckA : state.deckB).volume;
 }
 
+// EQ change that also mirrors into the store so the deck knobs move with it
+function setDeckEQ(deck: 'A' | 'B', band: 'low' | 'mid' | 'high', value: number): void {
+  engine().setEQ(deck, band, value);
+  const state = useAppStore.getState();
+  const eq = (deck === 'A' ? state.deckA : state.deckB).eq;
+  state.updateDeck(deck, { eq: { ...eq, [band]: Math.max(-26, Math.min(12, value)) } });
+}
+
 // AudioContext time at which the deck's next beat becomes audible, so gain
 // effects land on the grid instead of wherever the keypress fell.
 function nextBeatTime(deck: 'A' | 'B'): number {
@@ -102,11 +110,11 @@ const actions: DJAction[] = [
       const currentALow = e.getEQ(a, 'low');
       const currentBLow = e.getEQ(b, 'low');
       const settings = getBassSwapSettings(currentALow, currentBLow);
-      e.setEQ(a, 'low', settings.deckA.low);
-      e.setEQ(b, 'low', settings.deckB.low);
+      setDeckEQ(a, 'low', settings.deckA.low);
+      setDeckEQ(b, 'low', settings.deckB.low);
       setTimeout(() => {
-        e.setEQ(a, 'low', currentALow);
-        e.setEQ(b, 'low', currentBLow);
+        setDeckEQ(a, 'low', currentALow);
+        setDeckEQ(b, 'low', currentBLow);
       }, 3000);
     },
   },
@@ -186,8 +194,8 @@ const actions: DJAction[] = [
       const deck = activeDeck();
       const band = Math.random() > 0.5 ? ('high' as const) : ('mid' as const);
       const current = e.getEQ(deck, band);
-      e.setEQ(deck, band, -26);
-      setTimeout(() => e.setEQ(deck, band, current), 2500);
+      setDeckEQ(deck, band, -26);
+      setTimeout(() => setDeckEQ(deck, band, current), 2500);
     },
   },
 
