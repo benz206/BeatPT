@@ -37,12 +37,14 @@ export class AudioEngine {
   private constructor() {
     this.ctx = new AudioContext();
 
+    // Soft-knee limiting: hard 20:1 at -3 dB pumped audibly whenever two decks
+    // overlapped mid-blend, so trade a little ceiling for transparency.
     this.masterLimiter = this.ctx.createDynamicsCompressor();
-    this.masterLimiter.threshold.value = -3;
-    this.masterLimiter.knee.value = 0;
-    this.masterLimiter.ratio.value = 20;
-    this.masterLimiter.attack.value = 0.001;
-    this.masterLimiter.release.value = 0.1;
+    this.masterLimiter.threshold.value = -2;
+    this.masterLimiter.knee.value = 4;
+    this.masterLimiter.ratio.value = 12;
+    this.masterLimiter.attack.value = 0.002;
+    this.masterLimiter.release.value = 0.25;
     this.masterLimiter.connect(this.ctx.destination);
 
     this.masterGain = this.ctx.createGain();
@@ -471,5 +473,42 @@ export class AudioEngine {
 
   getDeckOutputNode(deck: Deck): GainNode {
     return this.decks[deck].gainNode;
+  }
+
+  // Post-crossfader, pre-limiter join for effect wet paths: tails ride through
+  // the master limiter (and the recorder) but aren't cut off by the crossfader.
+  getEffectsBus(): GainNode {
+    return this.masterGain;
+  }
+
+  // Wall-clock delay between a deck's source position and what's audible.
+  getOutputLatency(deck: Deck): number {
+    return this.decks[deck].keylock ? 0.055 : 0;
+  }
+
+  // Splice an effect node in-line after the deck's EQ chain (analyser → node →
+  // crossfader gain). Returns a function that restores the direct connection.
+  insertDeckEffect(deck: Deck, node: AudioNode): () => void {
+    const state = this.decks[deck];
+    const dest = deck === 'A' ? this.crossfaderGainA : this.crossfaderGainB;
+    try {
+      state.analyser.disconnect(dest);
+    } catch (_) {
+      // already re-routed by an overlapping insert; run in parallel with it
+    }
+    state.analyser.connect(node);
+    node.connect(dest);
+    let removed = false;
+    return () => {
+      if (removed) return;
+      removed = true;
+      try {
+        state.analyser.disconnect(node);
+        node.disconnect(dest);
+      } catch (_) {}
+      try {
+        state.analyser.connect(dest);
+      } catch (_) {}
+    };
   }
 }
