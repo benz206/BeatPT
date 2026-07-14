@@ -385,10 +385,11 @@ async function runEchoCut(ctx: TransitionContext, signal: AbortSignal): Promise<
   await parkCrossfader(ctx, signal, fromSide);
   if (signal.aborted) return;
 
-  // The echo's wet path bypasses the crossfader, so its tail rings out
-  // while the fader moves to the incoming deck
+  // The echo's wet path joins after the crossfader (effects bus), so its tail
+  // rings out while the fader moves to the incoming deck. Delay time tracks
+  // the audible tempo, not the file's nominal BPM.
   const echo = new EchoOut();
-  echo.apply(engine.getDeckOutputNode(fromDeck), fromTrack.bpm, engine.getContext());
+  echo.apply(engine.getDeckOutputNode(fromDeck), fromTrack.bpm * fromSpeed, engine.getContext(), engine.getEffectsBus());
   signal.addEventListener('abort', () => echo.remove(), { once: true });
 
   // Snappy cut: align to the next beat, not the next bar.

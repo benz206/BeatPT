@@ -34,14 +34,42 @@ function inactiveDeck(): 'A' | 'B' {
   return activeDeck() === 'A' ? 'B' : 'A';
 }
 
-function bpmGuess(): number {
+function deckTrack(deck: 'A' | 'B') {
   const state = useAppStore.getState();
-  const aDeck = state.deckA.track;
-  const bDeck = state.deckB.track;
-  if (aDeck && bDeck) return (aDeck.bpm + bDeck.bpm) / 2;
-  if (aDeck) return aDeck.bpm;
-  if (bDeck) return bDeck.bpm;
-  return 128;
+  return (deck === 'A' ? state.deckA : state.deckB).track;
+}
+
+// Audible tempo of the deck the effect will hit (track BPM × varispeed rate)
+function effectiveBPM(deck: 'A' | 'B'): number {
+  const track = deckTrack(deck);
+  if (!track) return 128;
+  return track.bpm * engine().getPlaybackRate(deck);
+}
+
+// The deck's fader level, so gain effects restore what the user set (not 1)
+function deckVolume(deck: 'A' | 'B'): number {
+  const state = useAppStore.getState();
+  return (deck === 'A' ? state.deckA : state.deckB).volume;
+}
+
+// AudioContext time at which the deck's next beat becomes audible, so gain
+// effects land on the grid instead of wherever the keypress fell.
+function nextBeatTime(deck: 'A' | 'B'): number {
+  const e = engine();
+  const now = audioCtx().currentTime;
+  const track = deckTrack(deck);
+  if (!track || !e.isPlaying(deck)) return now;
+
+  const pos = e.getPlaybackPosition(deck);
+  const rate = e.getPlaybackRate(deck);
+  let next = track.beatPositions.find((b) => b > pos + 0.001);
+  if (next === undefined) {
+    const interval = 60 / track.bpm;
+    const last = track.beatPositions[track.beatPositions.length - 1] ?? 0;
+    next = last + Math.max(1, Math.ceil((pos - last) / interval)) * interval;
+    if (next <= pos) next += interval;
+  }
+  return now + (next - pos) / rate + e.getOutputLatency(deck);
 }
 
 const actions: DJAction[] = [
@@ -56,7 +84,7 @@ const actions: DJAction[] = [
       const e = engine();
       const deck = activeDeck();
       const effect = new EchoOut();
-      effect.apply(e.getDeckOutputNode(deck), bpmGuess(), audioCtx());
+      effect.apply(e.getDeckOutputNode(deck), effectiveBPM(deck), audioCtx(), e.getEffectsBus());
     },
   },
 
@@ -94,7 +122,7 @@ const actions: DJAction[] = [
       const e = engine();
       const deck = activeDeck();
       const effect = new FilterSweep();
-      effect.apply(e.getDeckOutputNode(deck), bpmGuess(), audioCtx());
+      effect.apply((node) => e.insertDeckEffect(deck, node), effectiveBPM(deck), audioCtx());
     },
   },
 
@@ -108,16 +136,19 @@ const actions: DJAction[] = [
     execute() {
       const e = engine();
       const deck = activeDeck();
-      const bpm = bpmGuess();
-      const beatSecs = 60 / bpm;
+      const beatSecs = 60 / effectiveBPM(deck);
+      const vol = deckVolume(deck);
       const ctx = audioCtx();
-      const gainNode = e.getDeckOutputNode(deck);
+      const gain = e.getDeckOutputNode(deck).gain;
       const now = ctx.currentTime;
-      gainNode.gain.cancelScheduledValues(now);
-      gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-      gainNode.gain.linearRampToValueAtTime(0, now + 0.02);
-      gainNode.gain.setValueAtTime(0, now + beatSecs * 2 - 0.02);
-      gainNode.gain.linearRampToValueAtTime(1, now + beatSecs * 2);
+      // Cut on the next beat, slam back exactly two beats later
+      const t0 = nextBeatTime(deck);
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.setValueAtTime(gain.value, Math.max(now, t0 - 0.02));
+      gain.linearRampToValueAtTime(0, t0);
+      gain.setValueAtTime(0, t0 + beatSecs * 2 - 0.02);
+      gain.linearRampToValueAtTime(vol, t0 + beatSecs * 2);
     },
   },
 
@@ -132,7 +163,14 @@ const actions: DJAction[] = [
       const e = engine();
       const deck = activeDeck();
       const effect = new StutterEffect();
-      effect.apply(e.getDeckOutputNode(deck), bpmGuess(), audioCtx());
+      effect.apply(
+        e.getDeckOutputNode(deck),
+        effectiveBPM(deck),
+        audioCtx(),
+        e.getEffectsBus(),
+        nextBeatTime(deck),
+        deckVolume(deck),
+      );
     },
   },
 
@@ -163,20 +201,23 @@ const actions: DJAction[] = [
     execute() {
       const e = engine();
       const deck = activeDeck();
-      const bpm = bpmGuess();
-      const beatSecs = 60 / bpm;
-      const gainNode = e.getDeckOutputNode(deck);
+      const beatSecs = 60 / effectiveBPM(deck);
+      const vol = deckVolume(deck);
+      const gain = e.getDeckOutputNode(deck).gain;
       const ctx = audioCtx();
       const pulses = 8;
       const now = ctx.currentTime;
-      gainNode.gain.cancelScheduledValues(now);
-      gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+      // Duck right on each beat, swell back before the next — sidechain feel
+      const t0 = nextBeatTime(deck);
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.linearRampToValueAtTime(vol, t0);
       for (let i = 0; i < pulses; i++) {
-        const t = now + i * beatSecs;
-        gainNode.gain.linearRampToValueAtTime(0.15, t + beatSecs * 0.1);
-        gainNode.gain.linearRampToValueAtTime(1, t + beatSecs * 0.9);
+        const t = t0 + i * beatSecs;
+        gain.linearRampToValueAtTime(vol * 0.15, t + beatSecs * 0.1);
+        gain.linearRampToValueAtTime(vol, t + beatSecs * 0.9);
       }
-      gainNode.gain.linearRampToValueAtTime(1, now + pulses * beatSecs);
+      gain.linearRampToValueAtTime(vol, t0 + pulses * beatSecs);
     },
   },
 
@@ -191,7 +232,7 @@ const actions: DJAction[] = [
       const e = engine();
       const deck = activeDeck();
       const effect = new Reverb();
-      effect.apply(e.getDeckOutputNode(deck), bpmGuess(), audioCtx());
+      effect.apply(e.getDeckOutputNode(deck), effectiveBPM(deck), audioCtx(), e.getEffectsBus());
     },
   },
 
@@ -205,14 +246,15 @@ const actions: DJAction[] = [
     execute() {
       const e = engine();
       const deck = activeDeck();
+      const vol = deckVolume(deck);
       const ctx = audioCtx();
-      const gainNode = e.getDeckOutputNode(deck);
+      const gain = e.getDeckOutputNode(deck).gain;
       const now = ctx.currentTime;
-      gainNode.gain.cancelScheduledValues(now);
-      gainNode.gain.setValueAtTime(gainNode.gain.value, now);
-      gainNode.gain.linearRampToValueAtTime(0, now + 0.8);
-      gainNode.gain.setValueAtTime(0, now + 0.85);
-      gainNode.gain.linearRampToValueAtTime(1, now + 1.1);
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.linearRampToValueAtTime(0, now + 0.8);
+      gain.setValueAtTime(0, now + 0.85);
+      gain.linearRampToValueAtTime(vol, now + 1.1);
     },
   },
 ];

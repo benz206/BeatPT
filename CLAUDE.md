@@ -35,7 +35,7 @@ Deck source → TrimGain → Keylock worklet → GainNode → EQ (low/mid/high s
 
 ### Effects System (`src/engine/Effects.ts`, `DJActions.ts`)
 
-Effects implement the `DJEffect` interface (`apply` / `remove`). They splice temporary Web Audio nodes into the deck's output for a fixed duration, then self-disconnect. Available effects: EchoOut, FilterSweep, StutterEffect, Reverb, plus EQ-based actions (BassSwap, EQ Kill) and gain-scheduling actions (Beat Drop, Volume Pump, Spinback).
+Effects implement the `DJEffect` interface (`apply` / `remove`) and self-disconnect after a fixed duration. Wet sends (EchoOut, Reverb) tap the deck's gain node and join the mix at `AudioEngine.getEffectsBus()` (post-crossfader, pre-limiter) so tails hit the limiter and recorder. FilterSweep is a true insert spliced in-line via `AudioEngine.insertDeckEffect()`. Gain-scheduling actions (Beat Drop, Volume Pump, Stutter) are quantized to the deck's next audible beat (beat grid + keylock latency) and restore the deck's stored fader volume. EQ-based actions: BassSwap, EQ Kill.
 
 `DJActions.ts` defines a weighted pool of 10 actions. `triggerRandomAction()` picks one and executes it. Smooth Crossfade has 0.5 weight; everything else is 1.
 
