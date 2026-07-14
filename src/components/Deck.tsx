@@ -14,7 +14,7 @@ export function Deck({ deckId }: DeckProps) {
   const otherHasTrack = useAppStore((s) => !!(deckId === 'A' ? s.deckB : s.deckA).track);
   const {
     togglePlayback, setVolume, setSpeed, setEQ, loadTrack,
-    sync, setHotCue, jumpToHotCue, clearHotCue, setBeatLoop, clearLoop,
+    sync, resetDeck, setHotCue, jumpToHotCue, clearHotCue, setBeatLoop, clearLoop,
   } = useAudioEngine();
 
   const isA = deckId === 'A';
@@ -120,6 +120,14 @@ export function Deck({ deckId }: DeckProps) {
               }`}
             >
               SYNC
+            </button>
+
+            <button
+              onClick={() => resetDeck(deckId)}
+              title="Reset EQ, volume, and tempo to neutral"
+              className="px-2.5 h-6 text-[10px] font-bold rounded border border-border text-text-muted hover:border-border-hover hover:text-text-secondary transition-all duration-150 cursor-pointer"
+            >
+              RESET
             </button>
           </div>
         )}

@@ -36,14 +36,6 @@ export interface DeckState {
   loop: LoopState | null;
 }
 
-export interface ActionLog {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  timestamp: number;
-}
-
 interface AppState {
   // Library
   library: Track[];
@@ -63,10 +55,6 @@ interface AppState {
   // Master
   masterVolume: number;
   setMasterVolume: (value: number) => void;
-
-  // Action log
-  actionLog: ActionLog[];
-  addAction: (action: Omit<ActionLog, 'id' | 'timestamp'>) => void;
 
   // Transition
   transitionConfidence: number;
@@ -119,6 +107,7 @@ export const useAppStore = create<AppState>((set) => ({
         isPlaying: false,
         currentTime: 0,
         speed: 1,
+        eq: { low: 0, mid: 0, high: 0 },
         hotCues: [null, null, null, null] as (number | null)[],
         loop: null,
       };
@@ -136,19 +125,6 @@ export const useAppStore = create<AppState>((set) => ({
   masterVolume: 1,
   setMasterVolume: (value) =>
     set({ masterVolume: Math.max(0, Math.min(1, value)) }),
-
-  // Action log
-  actionLog: [],
-  addAction: (action) =>
-    set((state) => {
-      const entry: ActionLog = {
-        ...action,
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        timestamp: Date.now(),
-      };
-      const updated = [entry, ...state.actionLog].slice(0, 20);
-      return { actionLog: updated };
-    }),
 
   // Transition
   transitionConfidence: 50,

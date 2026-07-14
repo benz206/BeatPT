@@ -3,7 +3,6 @@ import {
   Deck,
   Crossfader,
   TrackLibrary,
-  ActionLog,
   TransitionMeter,
   AIThinkingOverlay,
 } from './components';
@@ -35,13 +34,8 @@ export default function App() {
 
           <Crossfader />
 
-          <div className="flex gap-3 p-4 h-52 shrink-0">
-            <div className="flex-1">
-              <ActionLog />
-            </div>
-            <div className="w-36">
-              <TransitionMeter />
-            </div>
+          <div className="p-4 h-52 shrink-0">
+            <TransitionMeter />
           </div>
         </main>
       </div>

@@ -129,6 +129,18 @@ export function useAudioEngine() {
     [updateDeck]
   );
 
+  // Return the deck to neutral: flat EQ, full volume, original tempo
+  const resetDeck = useCallback(
+    (deck: Deck) => {
+      const engine = engineRef.current;
+      (['low', 'mid', 'high'] as const).forEach((band) => engine.setEQ(deck, band, 0));
+      engine.setVolume(deck, 1);
+      engine.setPlaybackRate(deck, 1);
+      updateDeck(deck, { eq: { low: 0, mid: 0, high: 0 }, volume: 1, speed: 1 });
+    },
+    [updateDeck]
+  );
+
   const setHotCue = useCallback(
     (deck: Deck, slot: number) => {
       const state = useAppStore.getState();
@@ -210,6 +222,7 @@ export function useAudioEngine() {
     getAnalyserNode,
     setMasterVolume,
     sync,
+    resetDeck,
     setHotCue,
     jumpToHotCue,
     clearHotCue,

@@ -162,6 +162,11 @@ export class AudioEngine {
     this.playbackRates[deck] = 1;
     this.loops[deck] = null;
     state.keylock?.port.postMessage({ rate: 1, rampTime: 0 });
+    // Fresh track starts with a flat EQ — don't inherit leftover kills/boosts
+    for (const node of [state.eqLow, state.eqMid, state.eqHigh]) {
+      node.gain.cancelScheduledValues(this.ctx.currentTime);
+      node.gain.value = 0;
+    }
   }
 
   play(deck: Deck): void {

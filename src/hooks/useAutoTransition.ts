@@ -6,14 +6,6 @@ import { findBestMixPoint, MixPoint } from '../engine/MixPointFinder';
 import { executeTransition } from '../engine/TransitionExecutor';
 import { pickNextTrack } from '../engine/TrackSelector';
 
-const TRANSITION_ICONS: Record<string, string> = {
-  'long-blend': '🎶',
-  'tempo-ramp': '⏫',
-  'filter-sweep': '〰️',
-  'echo-drop': '💥',
-  'breakdown-bridge': '🌉',
-};
-
 export function useAutoTransition() {
   const transitioningRef = useRef(false);
   const lastConfidenceRef = useRef(0);
@@ -49,11 +41,6 @@ export function useAutoTransition() {
                 autoQueuedForRef.current = deckState.track.id;
                 engine.loadTrack(otherDeck, next.audioBuffer, next.gain);
                 state.loadTrackToDeck(otherDeck, next);
-                state.addAction({
-                  name: 'AI Track Pick',
-                  icon: '🤖',
-                  description: `Queued "${next.name}" (${Math.round(next.bpm)} BPM${next.key ? ` · ${next.key.camelot}` : ''})`,
-                });
               }
             }
             continue;
@@ -103,11 +90,6 @@ export function useAutoTransition() {
 
             state.setTransitionConfidence(85);
             state.setActiveTransitionType(plan.type);
-            state.addAction({
-              name: plan.description.split(' — ')[0],
-              icon: TRANSITION_ICONS[plan.type] ?? '↔️',
-              description: plan.description,
-            });
 
             abortRef.current = executeTransition({
               engine,

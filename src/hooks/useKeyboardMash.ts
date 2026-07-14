@@ -28,7 +28,6 @@ const IGNORED_KEYS = new Set(['Escape', ' ', 'Shift', 'Control', 'Alt', 'Meta', 
 export function useKeyboardMash() {
   const showAIThinking = useAppStore((state) => state.showAIThinking);
   const hideAIThinking = useAppStore((state) => state.hideAIThinking);
-  const addAction = useAppStore((state) => state.addAction);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -44,12 +43,9 @@ export function useKeyboardMash() {
       showAIThinking(message);
       setTimeout(() => hideAIThinking(), thinkingDuration);
 
-      const action = scheduler.selectAndExecute();
-      if (action) {
-        addAction({ name: action.name, icon: action.icon, description: action.description });
-      }
+      scheduler.selectAndExecute();
     },
-    [showAIThinking, hideAIThinking, addAction]
+    [showAIThinking, hideAIThinking]
   );
 
   useEffect(() => {

@@ -45,7 +45,7 @@ When mash mode is active, every keydown (except modifiers/space/escape) fires `t
 
 ### State Management
 
-Single Zustand store (`useAppStore`) holds: track library, both deck states (track/playing/time/volume/EQ), crossfader position, mash mode toggle, action log (last 20), hype/transition meters, AI thinking overlay, and DJ name generator.
+Single Zustand store (`useAppStore`) holds: track library, both deck states (track/playing/time/volume/EQ), crossfader position, mash mode toggle, hype/transition meters, AI thinking overlay, and DJ name generator. Loading a track onto a deck resets its EQ to flat (engine nodes and store).
 
 ### File Import
 
